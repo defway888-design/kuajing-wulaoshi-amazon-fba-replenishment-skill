@@ -1,0 +1,4 @@
+interface:
+  display_name: "跨境吴老师 亚马逊 FBA 备货 Skill"
+  short_description: "生成本周在线参数表，并按领星最新数据交付离线备货 BI 看板"
+  default_prompt: "使用 $kuajing-wulaoshi-amazon-fba-replenishment-skill 开始本周亚马逊 FBA 备货；先检查 LingXing MCP，再更新本周在线参数表。"
