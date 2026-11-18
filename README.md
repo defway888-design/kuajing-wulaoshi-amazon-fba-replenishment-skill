@@ -4,7 +4,7 @@
 
 仓库：[kuajing-wulaoshi-amazon-fba-replenishment-skill](https://github.com/defway888-design/kuajing-wulaoshi-amazon-fba-replenishment-skill)。当前为公开仓库，安装时无需提交 GitHub 用户名或接受私有仓库邀请。
 
-当前发布版本：Skill v1.6.0／看板 V8。看板母版和固定渲染入口均随仓库提供；正式看板只注入本次通过校验的数据。
+当前发布版本：Skill v1.7.0／看板 V9。看板母版和固定渲染入口均随仓库提供；正式看板只注入本次通过校验的数据。
 
 ## 适用场景
 
@@ -47,7 +47,7 @@
 ## 执行结果与失败边界
 
 - 第一阶段只更新本周参数表：在线路径返回链接，上传路径返回写入后的 XLSX；不自动执行第二阶段。
-- 第二阶段重新拉取 Listing、FBA 库存及 30／14／7 天销量，通过参数和数据校验后交付一个可下载的单文件离线 HTML 看板；四个动作明细与 CSV 均在 MSKU 和 ASIN 之间显示本次 `erp_listing.local_name` 对应的本地商品名称，筛选区也提供品名可搜索下拉框。上传路径还交付写回快照和运行记录后的同一工作簿 XLSX。核心数据缺失、匹配不确定或模板校验失败时停止。
+- 第二阶段重新拉取 Listing、FBA 库存及 30／14／7 天销量；可精确定位到单商品且不污染整批数据的异常只隔离该商品，在末尾待核实区说明，不计入七卡或四动作，其余商品继续计算。四个动作明细与 CSV 均在 MSKU 和 ASIN 之间显示本次 `erp_listing.local_name` 对应的本地商品名称，筛选区也提供品名可搜索下拉框。上传路径还交付写回快照和运行记录后的同一工作簿 XLSX。整批来源、分页、口径或模板校验失败，以及全部商品均待核实时仍停止。
 - FBA 库存查询结果中的原始“可用总库存”可能包含 FBM 可售数量。正式补货计算会在本次逐店铺复算并确认口径后剔除已计入的 FBM 数量，再处理在途防重；无法确认时停止，不把 FBM 库存当作 FBA 备货库存。
 - 首次空白 XLSX／在线表格会先写入四表，再回读校验保护和样式；空白输入没有现成模板是正常状态。重新上传本 Skill 已生成的工作簿或复用已绑定在线表格时，先校验既有模板再更新。若实际环境无法实现或验证强制保护，仍会停止并说明具体原因。
 
@@ -60,8 +60,8 @@
 ## 仓库文件
 
 - [`SKILL.md`](SKILL.md)：Skill 入口、两阶段路由与跨境吴老师品牌执行提示。
-- [`references/fba-two-stage-rules.md`](references/fba-two-stage-rules.md)：完整固定业务规则、两种输入载体共用的四表契约、计算口径与 V8 看板要求。
-- [`assets/dashboard_template.html`](assets/dashboard_template.html)：V8 固定 HTML／CSS／JS 页面母版，不含模拟或真实商品数据。
+- [`references/fba-two-stage-rules.md`](references/fba-two-stage-rules.md)：完整固定业务规则、两种输入载体共用的四表契约、计算口径与本地 V9 看板要求。
+- [`assets/dashboard_template.html`](assets/dashboard_template.html)：本地 V9 固定 HTML／CSS／JS 页面母版，不含模拟或真实商品数据。
 - [`scripts/render_dashboard.mjs`](scripts/render_dashboard.mjs)：校验母版指纹和预计算明细后，生成单文件离线 HTML 的固定入口；需 Node.js 20+。
 - [`tests/render_dashboard.test.mjs`](tests/render_dashboard.test.mjs)：本地渲染、数据阻断和脚本注入安全测试。
 - [`agents/openai.yaml`](agents/openai.yaml)：Codex 显示名称与默认启动提示。
@@ -70,6 +70,12 @@
 ## 版本更新记录
 
 以下记录的是 **Skill 已发布版本**；在线表格模板和看板模板各自的版本见 [`template_manifest.json`](template_manifest.json)，不要与 Skill 版本混用。日期均为北京时间。今后每次发布新版本，在本节顶部新增版本、日期和实际变动，并注明是否改变业务规则；不补编首次公开发布之前未经核实的历史版本。
+
+### v1.7.0｜2026-11-18
+
+- 可准确定位到单个商品、且不影响整批数据可信性的销量核对、商品参数、库存、映射或商品基础数据异常，定向复查后仅隔离受影响商品；正常商品继续计算。异常商品不进入四个最终动作、七张指标卡或补货量。
+- V9 看板在四个动作模块后按需显示“待核实商品（未参与计算）”明细，列出逐商品异常事实和处理建议，支持原有八维筛选、数量展开／收起及当前筛选明细 CSV。整批来源、分页、共同口径异常、无法界定影响范围或全部商品无法计算时仍阻断。
+- 影响范围：第二阶段异常处理、离线 HTML／CSV 和渲染输入契约；第一阶段四表字段及原有补货、清货、加快动销阈值不变。
 
 ### v1.6.0｜2026-11-18
 

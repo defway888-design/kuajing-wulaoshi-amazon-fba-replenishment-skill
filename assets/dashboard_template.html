@@ -82,14 +82,14 @@ tbody tr:hover{background:rgba(255,255,255,.10)}
 .action-badge{display:inline-block;vertical-align:middle;padding:3px 7px;border-radius:999px;font-weight:900;color:#fff;white-space:nowrap}
 .action-replenish{background:#d94732}.action-clearance{background:#6e138f}.action-accelerate{background:#b57b00}.action-none{background:#665c70}
 .status-new{color:#fff1a8;font-weight:900}.status-normal{color:#fff}.status-unknown{color:#2a1050;font-weight:900}.disabled{color:#eadcf3;font-style:italic}.empty-state{position:sticky;left:0;width:100%;padding:28px;text-align:center;font-weight:800}
-.module-replenish{--module-accent:#ff5b42}.module-clearance{--module-accent:#7a00a8}.module-accelerate{--module-accent:#f4fb20}.module-none{--module-accent:#766985;opacity:.88}
+.module-replenish{--module-accent:#ff5b42}.module-clearance{--module-accent:#7a00a8}.module-accelerate{--module-accent:#f4fb20}.module-none{--module-accent:#766985;opacity:.88}.module-exceptions{--module-accent:#ffd35a;background:rgba(110,72,145,.94)}
 @media(max-width:1100px){.top{grid-template-columns:minmax(0,1.6fr) repeat(2,minmax(0,1fr))}.title-tile{grid-row:span 2}.filters{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:1280px){td.frozen-col{position:static}th.frozen-col{left:auto;z-index:2}.freeze-edge{box-shadow:none}}
 @media(max-width:720px){.top,.bottom-kpis,.filters{grid-template-columns:1fr}.title-tile{grid-row:auto}h1{font-size:24px}.module-head{align-items:flex-start;flex-direction:column}.summary-actions{width:100%;justify-content:space-between}}
 </style>
 </head>
 <body>
-<main id="fba-dashboard" class="dash" data-template-version="FBA-BI-PURPLE-PINK-V8">
+<main id="fba-dashboard" class="dash" data-template-version="FBA-BI-PURPLE-PINK-V9">
   <section class="top" aria-label="标题和主要补货指标">
     <div class="tile title-tile"><div>
       <h1>跨境吴老师 亚马逊 FBA 备货 BI 看板</h1>
@@ -118,7 +118,8 @@ tbody tr:hover{background:rgba(255,255,255,.10)}
   'use strict';
   const root = document.getElementById('fba-dashboard');
   const moduleNames = ['需补货','清货','加快动销','无补货需求'];
-  const moduleIds = {'需补货':'replenish','清货':'clearance','加快动销':'accelerate','无补货需求':'none'};
+  const moduleIds = {'需补货':'replenish','清货':'clearance','加快动销':'accelerate','无补货需求':'none','待核实':'exceptions'};
+  const exceptionFilterValue = '待核实（未计算）';
   const filterDefs = [['owner','运营负责人'],['site','站点'],['shop','店铺名称'],['parent','父商品'],['msku','MSKU'],['name','品名'],['asin','ASIN'],['action','动作分类']];
   const detailColumns = [
     '运营负责人','站点','店铺名称','父商品','MSKU','品名','ASIN','可用总库存','计划入库','标发在途','实际在途','接收中',
@@ -139,6 +140,16 @@ tbody tr:hover{background:rgba(255,255,255,.10)}
     'production','domestic','airStart','airDays','railStart','railDays','seaStart','seaDays','listingDays',
     'safety','promo','promoName','airCover','railCover','seaCover','air','rail','sea','months','newStatus','action','note'
   ];
+  const exceptionColumns = ['运营负责人','站点','店铺名称','父商品','MSKU','品名','ASIN','异常类型','核对结果','处理建议'];
+  const exceptionFields = ['owner','site','shop','parent','msku','name','asin'];
+  const exceptionWidthsPx = [...detailWidthsPx.slice(0,7),150,480,300];
+  const exceptionAdvice = {
+    '销量核对异常':'核对领星 Listing 与产品表现的统计周期、口径或同步状态；修复后重新生成。',
+    '商品参数异常':'补齐或修正本期运营参数后重新生成。',
+    '库存异常':'核对该商品的 FBA 库存来源与匹配关系后重新生成。',
+    '映射异常':'核对店铺、MSKU、ASIN 的商品身份后重新生成。',
+    '商品基础数据异常':'核对该商品的 Listing 原始字段后重新生成。'
+  };
   const frozenLeftPx = [0,76,124,236,340,500,720];
   if (detailColumns.length !== 45 || detailWidthsPx.length !== 45 || fields.length !== 45 ||
       detailWidthsPx.reduce((a,b) => a+b,0) !== 6378 || detailWidthsPx.slice(0,7).reduce((a,b) => a+b,0) !== 824 ||
@@ -147,17 +158,21 @@ tbody tr:hover{background:rgba(255,255,255,.10)}
 
   const payload=__FBA_PAYLOAD_JSON__;
   const rows=Object.freeze(payload.rows.map(r=>Object.freeze(r)));
-  if(rows.length!==payload.totalProducts || moduleNames.reduce((n,a)=>n+rows.filter(r=>r.action===a).length,0)!==rows.length) throw Error('正式动作数量不守恒');
+  const exceptions=Object.freeze(payload.exceptions.map(r=>Object.freeze(r)));
+  if(rows.length!==payload.totalProducts || rows.length+exceptions.length!==payload.listingTotal ||
+      moduleNames.reduce((n,a)=>n+rows.filter(r=>r.action===a).length,0)!==rows.length) throw Error('商品总数或正式动作数量不守恒');
 
   const state=Object.fromEntries(filterDefs.map(([key])=>[key,'']));
   const searches=Object.fromEntries(filterDefs.map(([key])=>[key,'']));
-  const expanded=Object.fromEntries(moduleNames.map(action=>[action,true]));
+  const expanded=Object.fromEntries([...moduleNames,'待核实'].map(action=>[action,true]));
   let openKey=null;
   const escapeHtml=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
   const number=v=>Number(v).toLocaleString('zh-CN');
   const lowered=v=>String(v??'').trim().toLocaleLowerCase('zh-CN');
   const isNumeric=i=>(i>=7&&i<=11)||(i>=13&&i<=33)||(i>=35&&i<=41);
   const visible=()=>rows.filter(r=>filterDefs.every(([key])=>!state[key]||String(r[key])===state[key]));
+  const visibleExceptions=()=>exceptions.filter(r=>filterDefs.every(([key])=>
+    !state[key] || (key==='action'?state[key]===exceptionFilterValue:String(r[key])===state[key])));
   const compareText=(a,b)=>a<b?-1:a>b?1:0;
   const tie=(a,b)=>compareText(a.site,b.site)||compareText(a.shop,b.shop)||compareText(a.msku,b.msku);
   function sorted(action,data){
@@ -169,7 +184,8 @@ tbody tr:hover{background:rgba(255,255,255,.10)}
   }
   function optionHtml(key){
     const query=lowered(searches[key]);
-    const options=[...new Set(rows.map(r=>String(r[key])))].sort((a,b)=>a.localeCompare(b,'zh-CN')).filter(v=>lowered(v).includes(query));
+    const values=key==='action'?[...rows.map(r=>r.action),...(exceptions.length?[exceptionFilterValue]:[])]:[...rows,...exceptions].map(r=>String(r[key]));
+    const options=[...new Set(values)].sort((a,b)=>a.localeCompare(b,'zh-CN')).filter(v=>lowered(v).includes(query));
     const all=`<button type="button" class="filter-option" role="option" data-filter-option="${key}" data-value="" aria-selected="${state[key]===''}">全部</button>`;
     return all+(options.length?options.map(value=>`<button type="button" class="filter-option" role="option" data-filter-option="${key}" data-value="${escapeHtml(value)}" aria-selected="${state[key]===value}">${escapeHtml(value)}</button>`).join(''):'<div class="filter-empty">无匹配选项</div>');
   }
@@ -222,6 +238,21 @@ tbody tr:hover{background:rgba(255,255,255,.10)}
     const empty=list.length?'':'<div class="empty-state">当前筛选条件下无商品</div>';
     return `<section class="panel module ${cls}" data-module="${action}"><div class="module-head"><div class="module-title">${action}${icon}<button type="button" class="module-count" data-toggle-module="${action}" aria-controls="module-body-${id}" aria-expanded="${expanded[action]}" aria-label="${expanded[action]?'收起':'展开'}${action}明细">${list.length}</button></div><span class="summary-actions"><button type="button" class="csv-btn" data-export="${action}">下载当前明细 CSV</button></span></div><div class="module-body" id="module-body-${id}"${expanded[action]?'':' hidden'}><div class="table-wrap" role="region" tabindex="0" aria-label="${action}商品明细，可横向滚动查看全部字段；宽屏时左侧七列固定"><table style="width:6378px"><colgroup>${cols}</colgroup><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>${empty}</div></div></section>`;
   }
+  const sortedExceptions=()=>visibleExceptions().slice().sort((a,b)=>compareText(a.parent,b.parent)||tie(a,b));
+  const exceptionValues=r=>[
+    ...exceptionFields.map(key=>r[key]),
+    [...new Set(r.issues.map(issue=>issue.category))].join('、'),
+    r.issues.map(issue=>issue.detail).join('；'),
+    [...new Set(r.issues.map(issue=>exceptionAdvice[issue.category]))].join('；')
+  ];
+  function exceptionHtml(){
+    const list=sortedExceptions(),action='待核实';
+    const cols=exceptionWidthsPx.map(w=>`<col style="width:${w}px">`).join('');
+    const head=exceptionColumns.map((label,i)=>`<th class="${frozenClass(i)}"${frozenStyle(i)} title="${escapeHtml(label)}">${escapeHtml(label)}</th>`).join('');
+    const body=list.map(r=>`<tr>${exceptionValues(r).map((value,i)=>`<td class="${frozenClass(i)}"${frozenStyle(i)}>${escapeHtml(value)}</td>`).join('')}</tr>`).join('');
+    const empty=list.length?'':'<div class="empty-state">当前筛选条件下无待核实商品</div>';
+    return `<section class="panel module module-exceptions" data-module="${action}"><div class="module-head"><div class="module-title">待核实商品（未参与计算）<button type="button" class="module-count" data-toggle-module="${action}" aria-controls="module-body-exceptions" aria-expanded="${expanded[action]}" aria-label="${expanded[action]?'收起':'展开'}待核实商品明细">${list.length}</button></div><span class="summary-actions"><button type="button" class="csv-btn" data-export="${action}">下载当前明细 CSV</button></span></div><div class="module-body" id="module-body-exceptions"${expanded[action]?'':' hidden'}><div class="table-wrap" role="region" tabindex="0" aria-label="待核实商品明细，可横向滚动查看全部字段；宽屏时左侧七列固定"><table style="width:${exceptionWidthsPx.reduce((a,b)=>a+b,0)}px"><colgroup>${cols}</colgroup><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>${empty}</div></div></section>`;
+  }
   function render(){
     const data=visible();
     const sum=key=>data.reduce((n,r)=>n+r[key],0);
@@ -233,7 +264,7 @@ tbody tr:hover{background:rgba(255,255,255,.10)}
     root.querySelector('#kpi-clearance').textContent=number(count('清货'));
     root.querySelector('#kpi-accelerate').textContent=number(count('加快动销'));
     root.querySelector('#kpi-none').textContent=number(count('无补货需求'));
-    root.querySelector('#modules').innerHTML=moduleNames.map(action=>moduleHtml(action,data)).join('');
+    root.querySelector('#modules').innerHTML=moduleNames.map(action=>moduleHtml(action,data)).join('')+(exceptions.length?exceptionHtml():'');
   }
   const csvEscape=value=>{
     let s=String(value??'');
@@ -241,6 +272,15 @@ tbody tr:hover{background:rgba(255,255,255,.10)}
     return /[",\r\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;
   };
   function exportCsv(action){
+    if(action==='待核实'){
+      const lines=[exceptionColumns.map(csvEscape).join(',')];
+      for(const r of sortedExceptions())lines.push(exceptionValues(r).map(csvEscape).join(','));
+      const blob=new Blob(['\ufeff'+lines.join('\r\n')],{type:'text/csv;charset=utf-8'});
+      const url=URL.createObjectURL(blob),link=document.createElement('a');
+      link.href=url;link.download=`跨境吴老师_FBA备货_${payload.period}_待核实商品_当前筛选明细.csv`;
+      document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+      return;
+    }
     const data=sorted(action,visible());
     const lines=[detailColumns.map(csvEscape).join(',')];
     for(const r of data)lines.push(fields.map((key,i)=>csvEscape(cellValue(r,i))).join(','));

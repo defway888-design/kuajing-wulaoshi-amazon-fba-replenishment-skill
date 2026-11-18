@@ -21,9 +21,10 @@ function makeRow(overrides = {}) {
     ...overrides
   };
 }
-function makePayload(rows) {
-  return { templateVersion:'FBA-BI-PURPLE-PINK-V8',generatedAt:'2026-11-18 12:00',period:'2026-W47',
-    periodStart:'2026-11-16',periodEnd:'2026-11-22',sourceMode:'upload',totalProducts:rows.length,rows };
+function makePayload(rows, exceptions = []) {
+  return { templateVersion:'FBA-BI-PURPLE-PINK-V9',generatedAt:'2026-11-18 12:00',period:'2026-W47',
+    periodStart:'2026-11-16',periodEnd:'2026-11-22',sourceMode:'upload',
+    listingTotal:rows.length+exceptions.length,totalProducts:rows.length,rows,exceptions };
 }
 function run(payload) {
   const dir = mkdtempSync(join(tmpdir(), 'fba-board-test-'));
@@ -48,7 +49,7 @@ test('packages one offline HTML with vertical centering, fixed labels and no moc
   assert.equal(result.status, 0, result.stderr);
   assert.ok(html);
   assert.match(html, /thead th,tbody td\{vertical-align:middle\}/);
-  assert.match(html, /data-template-version="FBA-BI-PURPLE-PINK-V8"/);
+  assert.match(html, /data-template-version="FBA-BI-PURPLE-PINK-V9"/);
   assert.match(html, /当前筛选条件下无商品/);
   assert.match(html, /跨境吴老师_FBA备货_\$\{payload.period\}_\$\{action\}商品_当前筛选明细\.csv/);
   assert.match(html, /可用总库存含FBM可售2件，已从补货扣减库存中剔除/);
@@ -78,4 +79,47 @@ test('escapes product text inside the script payload', () => {
   assert.ok(html);
   assert.doesNotMatch(html, /<script>alert\(1\)<\/script>/);
   assert.match(html, /\\u003c\/script\\u003e/);
+});
+
+test('isolates one unexplained MSKU sales discrepancy without hiding healthy products', () => {
+  const exception = {owner:'运营甲',site:'US',shop:'示例店铺',parent:'B000000002',msku:'SKU-002',
+    name:'本地商品乙',asin:'B000000002',issues:[
+      {category:'销量核对异常',detail:'近30天：Listing参考销量37件，产品表现销量36件；定向复查仍无法解释。'},
+      {category:'销量核对异常',detail:'近14天：Listing参考销量13件，产品表现销量12件；定向复查仍无法解释。'}
+    ]};
+  const {result,html} = run(makePayload([makeRow()], [exception]));
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(html, /参与计算商品：1 个/);
+  assert.match(html, /待核实商品（未参与计算）/);
+  assert.match(html, /SKU-002/);
+  assert.match(html, /Listing参考销量37件，产品表现销量36件/);
+  assert.match(html, /Listing参考销量13件，产品表现销量12件/);
+  assert.match(html, /待核实（未计算）/);
+  assert.doesNotMatch(html, /"msku":"SKU-002"[^\n]*"action":"无补货需求"/);
+});
+
+test('blocks all-exception and duplicate-identity dashboards', () => {
+  const exception = {owner:'运营甲',site:'US',shop:'示例店铺',parent:'B000000001',msku:'SKU-001',
+    name:'本地商品甲',asin:'B000000001',issues:[{category:'销量核对异常',detail:'近30天销量无法核对。'}]};
+  const allExcluded = run(makePayload([], [exception]));
+  assert.notEqual(allExcluded.result.status, 0);
+  assert.equal(allExcluded.html, null);
+  const duplicate = run(makePayload([makeRow()], [exception]));
+  assert.notEqual(duplicate.result.status, 0);
+  assert.equal(duplicate.html, null);
+});
+
+test('rejects unaccounted Listings and undefined exception categories', () => {
+  const exception = {owner:'运营甲',site:'US',shop:'示例店铺',parent:'B000000002',msku:'SKU-002',
+    name:'本地商品乙',asin:'B000000002',issues:[{category:'销量核对异常',detail:'近30天销量核对未通过。'}]};
+  const missing = makePayload([makeRow()], [exception]);
+  missing.listingTotal = 3;
+  const countFailure = run(missing);
+  assert.notEqual(countFailure.result.status, 0);
+  assert.equal(countFailure.html, null);
+  const badCategory = makePayload([makeRow()], [exception]);
+  badCategory.exceptions[0].issues[0].category = '无需补货';
+  const categoryFailure = run(badCategory);
+  assert.notEqual(categoryFailure.result.status, 0);
+  assert.equal(categoryFailure.html, null);
 });

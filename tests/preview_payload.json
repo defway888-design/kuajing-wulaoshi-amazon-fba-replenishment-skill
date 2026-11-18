@@ -1,10 +1,11 @@
 {
-  "templateVersion": "FBA-BI-PURPLE-PINK-V8",
+  "templateVersion": "FBA-BI-PURPLE-PINK-V9",
   "generatedAt": "2026-11-18 12:00",
   "period": "2026-W47",
   "periodStart": "2026-11-16",
   "periodEnd": "2026-11-22",
   "sourceMode": "upload",
+  "listingTotal": 2,
   "totalProducts": 1,
   "rows": [{
     "owner": "模拟运营", "site": "US", "shop": "示例店铺", "parent": "B000000001", "msku": "SAMPLE-MSKU-001",
@@ -17,5 +18,13 @@
     "airCover": 0, "railCover": 0, "seaCover": 30,
     "rawAir": 0, "rawRail": 0, "rawSea": 33, "air": 0, "rail": 0, "sea": 33,
     "months": "0.00", "monthsRaw": 0, "newStatus": "新品", "action": "需补货"
+  }],
+  "exceptions": [{
+    "owner": "模拟运营", "site": "US", "shop": "示例店铺", "parent": "B000000002", "msku": "SAMPLE-ISSUE-002",
+    "name": "示例本地商品名称：待核实款", "asin": "B000000002",
+    "issues": [
+      {"category": "销量核对异常", "detail": "近30天：Listing参考销量37件，产品表现销量36件；定向复查仍无法解释。"},
+      {"category": "销量核对异常", "detail": "近14天：Listing参考销量13件，产品表现销量12件；定向复查仍无法解释。"}
+    ]
   }]
 }

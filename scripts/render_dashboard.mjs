@@ -7,9 +7,10 @@ import { createHash } from 'node:crypto';
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const templatePath = join(packageRoot, 'assets', 'dashboard_template.html');
-const TEMPLATE_SHA256 = 'c95af97b0654b94e192f1292c4b388411309e420a715f8bef36f700d67ed5acd';
-const VERSION = 'FBA-BI-PURPLE-PINK-V8';
+const TEMPLATE_SHA256 = '8f421c10599aa124004faa38ab25e338b02cf25bf8c3b3dcd8c330466e915703';
+const VERSION = 'FBA-BI-PURPLE-PINK-V9';
 const actions = new Set(['清货', '加快动销', '需补货', '无补货需求']);
+const exceptionCategories = new Set(['销量核对异常', '商品参数异常', '库存异常', '映射异常', '商品基础数据异常']);
 const statuses = new Set(['新品', '非新品', '未知']);
 const stages = [
   ['计划入库', 'working'], ['标发在途', 'shipped'],
@@ -106,17 +107,41 @@ function normalizeRow(input, index) {
   for (const key of fields) if (!Object.hasOwn(row, key)) fail(`第 ${index} 行渲染字段 ${key} 缺失`);
   return row;
 }
+function normalizeException(input, index) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) fail(`第 ${index} 条待核实商品不是对象`);
+  const keys = ['owner','site','shop','parent','msku','name','asin','issues'];
+  if (Object.keys(input).length !== keys.length || keys.some(key => !Object.hasOwn(input, key))) fail(`第 ${index} 条待核实商品字段不完整`);
+  const row = { ...input };
+  for (const key of keys.filter(key => key !== 'issues')) if (typeof row[key] !== 'string') fail(`第 ${index} 条待核实商品 ${key} 必须为文本`);
+  if (!/^[A-Z]{2}$/.test(row.site) || !row.shop.trim() || !row.msku.trim()) fail(`第 ${index} 条待核实商品身份不完整`);
+  for (const key of ['owner','parent','name','asin']) row[key] = row[key].trim() || '未获取';
+  if (!Array.isArray(row.issues) || row.issues.length < 1 || row.issues.length > 10) fail(`第 ${index} 条待核实商品异常项数量无效`);
+  row.issues = row.issues.map((issue, j) => {
+    if (!issue || typeof issue !== 'object' || Array.isArray(issue) || Object.keys(issue).length !== 2 ||
+        typeof issue.category !== 'string' || !exceptionCategories.has(issue.category) ||
+        typeof issue.detail !== 'string' || !issue.detail.trim() || issue.detail.length > 500) fail(`第 ${index} 条待核实商品第 ${j + 1} 项说明无效`);
+    if (/\b(?:sid|mid|request[_ -]?id|trace[_ -]?id)\s*[:=]/i.test(issue.detail)) fail(`第 ${index} 条待核实商品说明包含内部代码`);
+    return {category:issue.category, detail:issue.detail.trim()};
+  });
+  return row;
+}
 function validate(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) fail('顶层必须是对象');
-  const required = ['templateVersion','generatedAt','period','periodStart','periodEnd','sourceMode','totalProducts','rows'];
+  const required = ['templateVersion','generatedAt','period','periodStart','periodEnd','sourceMode','listingTotal','totalProducts','rows','exceptions'];
   for (const key of required) if (!Object.hasOwn(input, key)) fail(`缺少 ${key}`);
   for (const key of Object.keys(input)) if (!required.includes(key)) fail(`顶层含未定义字段 ${key}`);
   if (input.templateVersion !== VERSION) fail(`模板版本必须为 ${VERSION}`);
   if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(input.generatedAt)) fail('北京时间格式错误');
   if (!/^\d{4}-W\d{2}$/.test(input.period) || !/^\d{4}-\d{2}-\d{2}$/.test(input.periodStart) || !/^\d{4}-\d{2}-\d{2}$/.test(input.periodEnd)) fail('周期格式错误');
   if (!['online','upload'].includes(input.sourceMode)) fail('来源路径无效');
-  if (!Array.isArray(input.rows) || !Number.isSafeInteger(input.totalProducts) || input.totalProducts !== input.rows.length) fail('参与计算商品数不守恒');
-  return { ...input, rows: input.rows.map((row, i) => normalizeRow(row, i + 1)) };
+  if (!Array.isArray(input.rows) || !Array.isArray(input.exceptions) || !Number.isSafeInteger(input.totalProducts) ||
+      !Number.isSafeInteger(input.listingTotal) || input.totalProducts !== input.rows.length ||
+      input.listingTotal !== input.rows.length + input.exceptions.length || input.rows.length === 0) fail('原始商品、参与计算商品或待核实商品数不守恒');
+  const rows = input.rows.map((row, i) => normalizeRow(row, i + 1));
+  const exceptions = input.exceptions.map((row, i) => normalizeException(row, i + 1));
+  const identities = [...rows, ...exceptions].map(row => [row.site,row.shop,row.msku].join('\u0000'));
+  if (new Set(identities).size !== identities.length) fail('参与计算与待核实商品的身份重复');
+  return { ...input, rows, exceptions };
 }
 function render(payload, template) {
   const subtitle = `生成时间：${payload.generatedAt}（北京时间）｜周期：${payload.period}（${payload.periodStart} 至 ${payload.periodEnd}）｜参与计算商品：${payload.totalProducts} 个`;
