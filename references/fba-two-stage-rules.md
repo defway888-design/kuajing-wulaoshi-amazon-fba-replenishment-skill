@@ -50,6 +50,8 @@
 
 使用 `erp_listing` 完整分页读取当前权限内状态在售、履约方式 FBA 的 Listing，核对累计数量与接口总数，至少取得：内部店铺 ID、站点、店铺名称、运营负责人、父商品、MSKU、ASIN、品名、本地 SKU、Listing 创建时间。父商品为空而 ASIN 有效时，以 ASIN 作为显示与分组的临时父商品；父商品和 ASIN 都为空时阻断。不得只读取默认第一页便宣称当前权限全量。
 
+本 Skill 的`品名`固定为 `erp_listing` 商品记录中的 `local_name`（本地商品名称），商品匹配使用同一记录的 `store_id`（内部店铺 ID）＋`msku`，并核对 `asin`。当前 LingXing MCP `action` 的实测 JSON 容器路径为 `data.data.list[]`，即原始字段路径 `data.data.list[].local_name`；调用环境若已解包外层 MCP 封装，须先核实实际业务记录容器，再读取同名 `local_name`，不能把包装层变化误判为品名为空。`item_name` 是亚马逊 Listing 标题，`spu_name` 是另一商品层级字段，二者均不得替代本 Skill 的`品名`。商品固定参数和分期快照的`品名`参考值也使用相同来源，不另造第二套口径。任一正式 Listing 记录缺少 `local_name` 字段、字段类型异常或身份键缺失时按数据结构异常阻断；字段存在但值为 `null`、空串或仅空白时，运营可见处统一显示`未获取`，不从其他字段回填。
+
 每个内部店铺 ID 在本次运行内存中还必须对应一个**有来源凭据的亚马逊站点大写代码**。优先读取 `erp_listing` 中明确标注为站点代码的字段；若只有站点名称／站点 URL，则读取**本次运行者自己连接的**领星 MCP 店铺元数据能力（例如实际可调用的 `get_my_sids`），用同一内部店铺 ID 取得明确的站点代码或该站点唯一的亚马逊 marketplace 标识，再核对与 Listing 的站点、店铺名称一致。来源字段的业务含义明确、同一店铺代码唯一时即可接受，**不得因为代码未列在第 2.3 节预置时区表就从第一阶段删除该店铺或其 Listing**；原始字段与核对结果仅留运行内存，不写入参数表。`GB` 与 `UK` 等可能的代码别名仅在领星明确站点字段或唯一 marketplace 标识证实为同一站点时规范为第 2.3 节使用的展示代码，禁止仅凭文本相似合并。**不得从“美国／加拿大”等国家文字、店铺名称、币种或 URL 字符串自行猜代码**；缺少可靠来源或相互矛盾时阻断并用站点／店铺名称报告，不得猜测。此店铺元数据调用只用于身份与站点代码核验，不属于第一阶段的正式库存或销量拉取，也不改变四表字段。
 
 内部店铺 ID 只在本次运行内存中用于连接 MCP 数据。先将每个内部店铺 ID 映射到规范化后的`站点＋店铺名称`，再向所选参数表写入业务字段。不同站点允许同名店铺；同一站点下同名店铺映射到多个内部 ID、同一内部 ID 映射多个站点／店铺、店铺名称缺失或映射不唯一时阻断。内部店铺名称改变而无可靠的旧新身份依据时，不得自动继承或合并本周填写值；报告旧新名称并要求用户明确核对，再由系统按确认结果更新受保护参考字段。库存和销量 MCP 内部仍按店铺 ID＋MSKU 精确匹配，不凭两接口返回的店铺文字直接联表。
@@ -263,15 +265,18 @@
 每个已启用方式建议补货量 = 向上取整(未取整补货量)
 ```
 
-内部保留完整精度，仅展示时将销量保留两位小数、库存可支持月数保留一位小数；不得将显示为 0.00、但内部精度仍大于 0 的销量当作零销量。向上取整只在补货量最后一步进行；未启用的空运／铁路覆盖天数、建议量为 0，不参与补货判断。Listing 创建时间若含明确时区信息，先转换为第 2.3 节对应的站点当地日历日期；若接口只提供 `YYYY-MM-DD` 日期，以该日期作为站点日历日期的固定业务假设并在运行对话注明；若提供不带时区的时分秒而无法确定其时区，则阻断并报告时间口径无法确认。以本次已锁定的站点当地“今天”为未来日期校验上限：创建日期晚于今天、日期格式无效则阻断；创建日期是今天而晚于销量截止日 D 属正常新建商品，**不得阻断**。创建日期≤D 时用 D 减创建日期的日历天数判断：0 至 90 天（含第 90 天）为新品，超过 90 天为非新品；创建日期为今天时新品年龄按 0 天处理，不因三个完整销量窗口尚未覆盖今天而触发零销量特殊清货。空日期为新品状态未知，仍参与原有正销量动作及补货判断，但不参与下述零销量特殊清货。
+内部保留完整精度；看板和 CSV 的`加权平均日销量`、`加权月销量`、`库存可支持月数`统一在输出时按十进制四舍五入（ROUND_HALF_UP）保留两位小数并补足尾零。用于补货量、清货／加快动销阈值、零销量识别及按支持月数排序的均是未舍入值，不得用展示值回算或判定；不得将显示为 0.00、但内部精度仍大于 0 的销量当作零销量。向上取整只在补货量最后一步进行；未启用的空运／铁路覆盖天数、建议量为 0，不参与补货判断。Listing 创建时间若含明确时区信息，先转换为第 2.3 节对应的站点当地日历日期；若接口只提供 `YYYY-MM-DD` 日期，以该日期作为站点日历日期的固定业务假设并在运行对话注明；若提供不带时区的时分秒而无法确定其时区，则阻断并报告时间口径无法确认。以本次已锁定的站点当地“今天”为未来日期校验上限：创建日期晚于今天、日期格式无效则阻断；创建日期在 D 之后但不晚于今天属于正常新建商品，**不得阻断**。创建日期≤D 时用 D 减创建日期的日历天数判断：0 至 90 天（含第 90 天）输出`新品`，超过 90 天输出`非新品`；创建日期在 D 之后且不晚于今天时新品年龄按 0 天处理，输出`新品`，不因三个完整销量窗口尚未覆盖创建日而触发零销量特殊清货。创建日期为空时输出`未知`，仍参与原有正销量动作及补货判断，但不参与下述零销量特殊清货。`新品状态`在四个明细模块与对应 CSV 中仅允许以上三个中文文字值；内部可使用状态码计算，但不得将数字、布尔值、空值或其他占位符输出到该列。
 
 基础判定：任一已启用方式建议量>0 为需补货；加权月销量>0 时，FBA 可售库存÷加权月销量>6 为清货，>4 且≤6 为加快动销；未命中前三项为无补货需求。**零销量特殊清货**仅在产品表现接口的同一商品 30／14／7 天三个正式销量窗口均为 0、按第 2.3 节完成质量校验且未触发阻断、Listing 创建日期已知且按站点截止日 D 判断为非新品、FBA 可售库存≥7 件时触发。其固定模拟基准为每月 1 件：FBA 可售库存÷（1 件／月）>6 个月；因库存必须为非负整数，最小命中值是 7 件。这里的“零销量”是三个正式窗口的原始数值均为 0，不是展示四舍五入后的 0.00；允许的局部 Listing 参考值差异经复查通过后，仍以产品表现接口的正式 0 值判定，同时在本次运行对话说明差异，不能把未通过的异常当作真实零销量。该规则不使用可用总库存、在途库存、补货计算扣减库存或促销数量作为清货库存门槛。新品及创建日期未知的商品不适用该特殊清货规则，但不豁免原有的正销量清货、加快动销及补货规则。
 
-加权月销量为 0 时，**实际**库存可支持月数不可计算，不执行除以 0；看板与 CSV 的“库存可支持月数”显示`无法计算（销量为 0）`，加权月销量仍显示`0.00`。命中零销量特殊清货时，仅在原有“备注”列注明`零销量清货：FBA 可售库存 {件数} 件；假设每月销售 1 件，模拟可支持 {件数}.0 个月（非实际销量，也不保证是最低可支持月数）；模拟值超过 6 个月，因此禁止补货`，不得把模拟月数填进实际“库存可支持月数”列、改写正式销量或新增动作／字段／说明模块。不命中特殊清货且促销数量为 0 时，归入无补货需求并备注零销量及 FBA 可售库存风险；不命中特殊清货且促销数量>0 时，仅按促销数量形成需补货建议并备注原因。
+加权月销量为 0 时，**实际**库存可支持月数不可计算，不执行除以 0；看板与 CSV 的“库存可支持月数”显示`无法计算（销量为 0）`，加权月销量仍显示`0.00`。命中零销量特殊清货时，仅在原有“备注”列使用固定句式`销量为0；FBA可售库存{件数}件；按1件/月模拟，库存可支持{件数}.00个月；执行清货`；该值只是 1 件／月的模拟，不是实际支持月数；不得把模拟月数填进实际“库存可支持月数”列、改写正式销量或新增动作／字段／说明模块。不命中特殊清货且促销数量为 0 时，归入无补货需求并备注零销量及 FBA 可售库存风险；不命中特殊清货且促销数量>0 时，仅按促销数量形成需补货建议并备注原因。
 
-最终动作优先级固定为：**清货 → 加快动销 → 需补货 → 无补货需求**。正销量的清货与加快动销按区间互斥；零销量特殊清货也不可能同时命中正销量加快动销；若实际出现同时命中则阻断。计算需补货但同时命中清货或加快动销时，只执行优先级更高的动作，三个最终建议补货量均归零，保留原始建议量供本次运行内审计，并在备注明确写出适用的真实库存可支持月数或零销量模拟月数、对应阈值、禁止补货原因及归零前后数值；清货同时有促销数量时也须说明促销补货不执行。零销量特殊清货与促销补货同时命中时，只执行清货，不得因促销数量再次归入需补货。无补货需求是兜底，不与其他动作并列。每个商品最终恰好进入一个模块，四类商品数之和等于成功计算商品总数。
+最终动作优先级固定为：**清货 → 加快动销 → 需补货 → 无补货需求**。正销量的清货与加快动销按区间互斥；零销量特殊清货也不可能同时命中正销量加快动销；若实际出现同时命中则阻断。计算需补货但同时命中清货或加快动销时，只执行优先级更高的动作，三个最终建议补货量均归零，保留原始建议量供本次运行内审计，并在备注中使用下文固定的动作冲突短句；原始建议量、阈值、支持月数及归零前后数值保留在本次运行内审计，不要求在看板备注逐一列出；清货同时有促销数量时，“建议补货量均置0”也表示促销补货不执行。零销量特殊清货与促销补货同时命中时，只执行清货，不得因促销数量再次归入需补货。无补货需求是兜底，不与其他动作并列。每个商品最终恰好进入一个模块，四类商品数之和等于成功计算商品总数。
+每个商品的`最终动作`输出值必须且只能是`清货`、`加快动销`、`需补货`、`无补货需求`之一。内部可使用动作码进行计算，但输出前必须映射为上述中文原文；不得输出数字、布尔值、英文代码、空值、多个动作并列或带前后缀的变体。归属模块、动作分类筛选、HTML 明细列与对应 CSV 列均使用同一最终动作值，不以动作模块标题（如`清货商品`）替代该列值。
 
 零销量规则的固定验收样例（仅用于校验执行逻辑，不写入正式 HTML）：正式三窗口销量均为 0、质量校验通过时，非新品且 FBA 可售库存 6 件、促销 0 件→无补货需求；非新品且库存 7 件、促销 0 件→清货；非新品且库存 7 件、促销 5 件→仅清货，所有最终建议补货量为 0；非新品且库存 6 件、促销 5 件→按原规则需补货；上架恰好 90 天或创建日期未知、库存 100 件且促销 0 件→不按零销量特殊规则清货，归入无补货需求。任一正式窗口原始销量大于 0，即使加权月销量显示四舍五入为`0.00`，也必须走正销量规则，不得使用 1 件／月模拟门槛。
+
+看板与 CSV 的`备注`仅输出本节和第 2.2 节已定义的商品级特殊情况，使用以下固定句式并只替换花括号中的数值：①本次已核实剔除非零 FBM 可售：`可用总库存含FBM可售{件数}件，已从补货扣减库存中剔除。`；②零销量特殊清货：`销量为0；FBA可售库存{件数}件；按1件/月模拟，库存可支持{月数}个月；执行清货`，其中月数固定为可售件数除以 1 件／月后保留两位；③零销量但不命中特殊清货且无促销：`销量为0；FBA可售库存{件数}件，实际库存可支持月数无法计算，存在库存风险。`，仅因促销形成补货时：`销量为0；仅因本周促销备货{件数}件形成补货建议。`；④测算需补货但清货优先：`测算存在补货需求，但命中清货条件；清货优先，空运、铁路、海运建议补货量均置0。`，加快动销优先：`测算存在补货需求，但命中加快动销条件；加快动销优先，空运、铁路、海运建议补货量均置0。`。普通商品备注为空字符串，不得写`未获取`、`正常`或通用公式解释。运营填写的商品／站点／本期备注仅保留在参数表及快照，不自动拼入看板。多种特殊情况同现时按①FBM→②或③零销量→④动作冲突顺序拼接，前一分句末尾的句号在拼接时去掉，以中文分号连接，不重复同一原因；HTML 与 CSV 必须逐字一致。分页、日期、滞后和数据质量等运行级说明只在运行对话中输出，不进入商品备注。
 
 ## 3. 固定离线 HTML 看板
 
@@ -279,7 +284,7 @@
 
 仅在正式 HTML 的站点筛选选项、站点明细列及该列导出的 CSV 中，将已核实的业务站点显示为大写英文缩写（如`US`、`UK`），统一使用第 1.2 节已核实的规范站点代码及第 2.3 节已核实的日期口径，**不要求该代码必须出现于预置时区表**；不显示中文站点名，也不允许因显示转换改变筛选键或商品匹配结果。参数表的站点参考值、其`站点＋店铺名称`唯一键、MCP 内部店铺映射仍按第 1.2 节保留原文；展示缩写只属于看板呈现，不反写参数表。无法可靠映射或同一展示缩写对应本次运行中多个不同业务站点时阻断，不得靠国家文字或店铺名猜测。
 
-上述八个筛选维度均使用**单个可搜索下拉控件**：收起时只显示当前选择值或“全部”，不得在控件外另放一行独立搜索框；点击后在下拉选项列表顶部显示搜索输入框和该维度的选项。输入关键词只在当前下拉框内按不区分大小写的包含关系缩小选项，**不立即改变商品明细或指标**；点击匹配选项或在搜索输入框按 Enter 选中首个匹配选项后，才将该维度设为精确匹配并统一更新七卡、四模块、计数、排序及 CSV。品名选项取本次正式 Listing 精确映射后的展示值去重；同名商品可对应多个 MSKU，选择该品名时匹配全部同名商品，不反推或合并 MSKU；Listing 品名为空的商品统一以`未获取`作为可搜索、可选中的品名值。各维度之间取交集；“全部”清除该维度的选择，顶部“重置筛选”清除八个维度；无匹配时显示“无匹配选项”，不可把无匹配误选为“全部”。同一时刻最多打开一个下拉框，点击控件外或按 Escape 关闭，关闭本身不更改已生效筛选。下拉框内部搜索不能创建新的业务筛选维度，也不能添加第五个动作模块。
+上述八个筛选维度均使用**单个可搜索下拉控件**：收起时只显示当前选择值或“全部”，不得在控件外另放一行独立搜索框；点击后在下拉选项列表顶部显示搜索输入框和该维度的选项。输入关键词只在当前下拉框内按不区分大小写的包含关系缩小选项，**不立即改变商品明细或指标**；点击匹配选项或在搜索输入框按 Enter 选中首个匹配选项后，才将该维度设为精确匹配并统一更新七卡、四模块、计数、排序及 CSV。品名选项取本次正式 `erp_listing.local_name` 精确映射后的展示值去重；同名商品可对应多个 MSKU，选择该品名时匹配全部同名商品，不反推或合并 MSKU；本地商品名称为空的商品统一以`未获取`作为可搜索、可选中的品名值。各维度之间取交集；“全部”清除该维度的选择，顶部“重置筛选”清除八个维度；无匹配时显示“无匹配选项”，不可把无匹配误选为“全部”。同一时刻最多打开一个下拉框，点击控件外或按 Escape 关闭，关闭本身不更改已生效筛选。下拉框内部搜索不能创建新的业务筛选维度，也不能添加第五个动作模块。
 
 顶部标题卡**仅有以下三行可见文字**，动态值来自本次成功计算，示例日期与数量不得写死；标点、顺序和文案固定，不插入项目符号、说明段落、截止日、窗口、库存公式、审计结论或“模拟预览”等其他文字：
 
@@ -295,11 +300,14 @@
 
 上述标题、生成时间与数据来源三项文字均用白色；标题卡在固定紫色系中使用深色底，保证白字清晰。不得在顶部恢复旧版的深色文字或附加说明。
 
-四个明细模块**全部默认显示明细**，包括无补货需求。只有点击对应的商品数量数字（该模块标题旁数量，或对应动作指标卡的数量）才切换该模块的收起／展开状态；点击模块标题、空白处、排序提示或 CSV 按钮不得切换。筛选、重置和 CSV 导出不改变已选的展开状态；数量为 0 时仍可点击并展示空状态。需补货按海运建议量降序→铁路建议量降序→空运建议量降序；加快动销按实际库存可支持月数降序；清货先列出实际库存可支持月数可计算的商品并按实际月数降序，再列出零销量特殊清货商品并按 FBA 可售库存降序；无补货需求按父商品→站点代码→店铺名称→MSKU 升序。前三个模块主排序值并列时按站点代码→店铺名称→MSKU 升序稳定排序；比较使用本次业务键的规范值和 Unicode 码点顺序，不依赖运行环境默认区域排序。零销量特殊清货的模拟月数绝不参与实际月数排序。四个模块标题右侧均有`下载当前明细 CSV`，只导出当前筛选条件下该模块全部明细（含当前被收起但属于该模块的行），且行顺序与该模块当前排序完全一致，使用 UTF-8 with BOM。CSV 遵循 RFC 4180 转义；以 `=`、`+`、`-`、`@` 开头的文本前置英文单引号，防止电子表格公式执行。补货量整数、销量两位小数、真实支持月数一位小数；零销量的实际支持月数显示`无法计算（销量为 0）`，不得把它当作核心数据拉取失败；非核心文字缺失显示“未获取”，核心数值缺失必须阻断，空运／铁路成对留空显示“未启用”。
+四个明细模块**全部默认显示明细**，包括无补货需求。只有点击对应的商品数量数字（该模块标题旁数量，或对应动作指标卡的数量）才切换该模块的收起／展开状态；点击模块标题、空白处、排序提示或 CSV 按钮不得切换。筛选、重置和 CSV 导出不改变已选的展开状态；数量为 0 时仍可点击并展示空状态。需补货按海运建议量降序→铁路建议量降序→空运建议量降序；加快动销按实际库存可支持月数降序；清货先列出实际库存可支持月数可计算的商品并按实际月数降序，再列出零销量特殊清货商品并按 FBA 可售库存降序；无补货需求按父商品→站点代码→店铺名称→MSKU 升序。前三个模块主排序值并列时按站点代码→店铺名称→MSKU 升序稳定排序；比较使用本次业务键的规范值和 Unicode 码点顺序，不依赖运行环境默认区域排序。零销量特殊清货的模拟月数绝不参与实际月数排序。四个模块标题右侧均有`下载当前明细 CSV`，只导出当前筛选条件下该模块全部明细（含当前被收起但属于该模块的行），且行顺序与该模块当前排序完全一致，使用 UTF-8 with BOM。CSV 遵循 RFC 4180 转义；以 `=`、`+`、`-`、`@` 开头的文本前置英文单引号，防止电子表格公式执行。补货量为整数；`加权平均日销量`、`加权月销量`及实际`库存可支持月数`在四个模块和 CSV 均固定显示两位小数，相关备注中的支持月数也保留两位，按第 2.4 节的未舍入值判定与排序；零销量的实际支持月数显示`无法计算（销量为 0）`，不得把它当作核心数据拉取失败；非核心文字缺失显示“未获取”，核心数值缺失必须阻断；空运／铁路成对留空时，仅对应运输天数和起运天数显示“未启用”，覆盖天数与建议补货量显示整数 0 且不参与补货判断；显式填写 0 仍为启用。
 
-四个模块列及 CSV 列完全一致，固定为：运营负责人、站点、店铺名称、父商品、MSKU、品名、ASIN、可用总库存、计划入库、标发在途、实际在途、接收中、可用总库存已含阶段、已含在途扣除量、非在途可用库存基数、标准生命周期在途库存、补货计算扣减库存、FBA 可售库存、最近 30 天销量、最近 14 天销量、最近 7 天销量、加权平均日销量、加权月销量、生产天数、国内到货天数、空运起运天数、空运天数、铁路起运天数、铁路天数、海运起运天数、海运天数、亚马逊上架天数、安全系数、本周促销备货数量、促销活动名称、空运覆盖天数、铁路覆盖天数、海运覆盖天数、空运建议补货量、铁路建议补货量、海运建议补货量、库存可支持月数、新品状态、最终动作、备注。所有卡片、明细与 CSV 均用最终动作及冲突归零后的建议量。
+四个模块列及 CSV 列完全一致，固定为：运营负责人、站点、店铺名称、父商品、MSKU、品名、ASIN、可用总库存、计划入库、标发在途、实际在途、接收中、可用总库存已含阶段、已含在途扣除量、非在途可用库存基数、标准生命周期在途库存、补货计算扣减库存、FBA 可售库存、最近 30 天销量、最近 14 天销量、最近 7 天销量、加权平均日销量、加权月销量、生产天数、国内到货天数、空运起运天数、空运天数、铁路起运天数、铁路天数、海运起运天数、海运天数、亚马逊上架天数、安全系数、本周促销备货数量、促销活动名称、空运覆盖天数、铁路覆盖天数、海运覆盖天数、空运建议补货量、铁路建议补货量、海运建议补货量、库存可支持月数、新品状态、最终动作、备注。`新品状态`按第 2.4 节映射为固定中文文字值，HTML 与 CSV 保持一致，不显示内部数字状态码。所有卡片、明细与 CSV 均用最终动作及冲突归零后的建议量。
+`最终动作`列按第 2.4 节固定四值输出；四个模块、CSV 与`动作分类`筛选选项的文字必须一致。筛选项可另有`全部`作为清除筛选的控件选项，但`全部`绝不是商品的最终动作值。
+本节“非核心文字缺失显示未获取”不适用于`备注`列：无第 2.4 节规定的特殊情况时必须留空；有特殊情况时 HTML 与 CSV 按同一备注内容输出，不得生成额外说明列或模块。 `促销活动名称`列存在但运营留空时，HTML 与 CSV 均保留空字符串，即使促销数量大于 0 也不新增活动名称必填；列本身缺失仍按模板异常阻断。安全系数按本期有效填写值显示，不强制补零；近 30／14／7 天原始销量、库存件数及最终建议补货量显示整数，加权平均日销量、加权月销量及可计算的库存可支持月数仍固定两位小数。
+`可用总库存已含阶段`仅列本次逐店、逐行核实确实计入原始可用总库存的阶段，顺序固定为`计划入库、标发在途、接收中、实际在途`；无任何已含阶段时显示`无`，无法核实则阻断。该文本只是字段组成标记，不允许把互相重叠的阶段再次相加。四个模块空结果时只显示`当前筛选条件下无商品`；CSV 仍可下载，仅含固定表头且使用 UTF-8 BOM，空状态提示不导出。CSV 文件名固定为`跨境吴老师_FBA备货_{周期}_{模块名}商品_当前筛选明细.csv`。
 
-本次新增的`品名`用于四模块明细、CSV 与第六个筛选维度，不改变动作判定。第二阶段必须从本次**重新拉取**的 `erp_listing` 读取当前店铺、当前 MSKU 的品名：在运行内存中按内部店铺 ID＋MSKU 精确定位，并核对该行 ASIN 身份与本次正式 Listing 一致，再映射到四个模块、CSV 及品名筛选的同一商品行。不得按父商品／ASIN 单独回填、跨店铺借用、从参数表或上次快照复制旧品名，也不得把库存／销量接口的名称当作 Listing 品名。匹配身份不唯一或互相矛盾时按第 1.2、2.1 节阻断；身份已确认但 Listing 品名确为空时，四模块、CSV 与筛选值均使用`未获取`，不臆造商品名称。品名按普通文本安全转义，CSV 同样执行本节的公式注入防护。
+`品名`用于四模块明细、CSV 与第六个筛选维度，不改变动作判定。第二阶段必须从本次**重新拉取**的 `erp_listing` 商品记录读取 `local_name`（本地商品名称）：在运行内存中按该记录的 `store_id`＋`msku` 精确定位，并核对该行 `asin` 身份与本次正式 Listing 一致，再映射到四个模块、CSV 及品名筛选的同一商品行。不得按父商品／ASIN 单独回填、跨店铺借用、从参数表或上次快照复制旧品名，也不得把 `item_name`（亚马逊 Listing 标题）、`spu_name`、库存／销量接口的名称当作本地品名。匹配身份不唯一或互相矛盾、字段缺失或类型异常时按第 1.2、2.1 节阻断；字段存在且身份已确认，但 `local_name` 为 `null`、空串或仅空白时，四模块、CSV 与筛选值均使用`未获取`，不臆造商品名称。品名按普通文本安全转义，CSV 同样执行本节的公式注入防护。
 
 清货商品数指标卡和清货模块标题旁，必须显示一个**琥珀色圆形感叹号 SVG 图标**，其无障碍名称为`重点提醒`；加快动销商品数指标卡和加快动销模块标题旁使用**完全相同的可见 SVG 图标**，无障碍名称为`次重点提醒`。四处图标的尺寸、颜色、路径一致；不显示“重点提醒”或“次重点提醒”的文字框，也不添加图例。图标只作提示，不改变动作优先级、数量按钮的点击范围或 CSV 交互。
 
@@ -330,7 +338,7 @@ const detailTableWidthPx = detailWidthsPx.reduce((sum, width) => sum + width, 0)
 if (detailTableWidthPx !== 6378) throw new Error('明细总宽度契约不一致');
 ```
 
-每个明细 `<table>` 均设置 `style="width:6378px"`，并按 `detailWidthsPx` 的顺序生成完整 `<colgroup><col style="width:...px">…</colgroup>`；四个模块共用同一列宽映射。只有 `.table-wrap` 负责横向滚动，不得让整个看板页面横向溢出。除前七列的指定例外，标题和单元格允许自动换行，不能截断、隐藏或省略号代替完整字段名／内容；每个 `<th>` 还要设置完整字段名 `title`。站点使用大写缩写，父商品与 ASIN 的表头和数据在同一行完整显示、不得跨行；店铺名称与 MSKU 保留足够列宽；第六列品名固定宽 220px，允许完整换行并随行高增长，不得裁切、隐藏或用省略号代替。七列冻结区宽度锁定为 824px；这次新增品名使冻结区比 V6 加宽，不能为保持旧比例而压缩店铺名称、MSKU 或品名。每条数据行的所有单元格均垂直居中。数值列——第 8–12、14–34、36–42 列（从 1 开始计数）——标题 `<th>` 与内容 `<td>` 都加 `num` 类且水平居中；文字列（含品名）保持左对齐。数值列中的“未启用”也居中。不得只调整数值而不调整对应标题，或用空格人为对齐。
+每个明细 `<table>` 均设置 `style="width:6378px"`，并按 `detailWidthsPx` 的顺序生成完整 `<colgroup><col style="width:...px">…</colgroup>`；四个模块共用同一列宽映射。只有 `.table-wrap` 负责横向滚动，不得让整个看板页面横向溢出。除前七列的指定例外，标题和单元格允许自动换行，不能截断、隐藏或省略号代替完整字段名／内容；每个 `<th>` 还要设置完整字段名 `title`。站点使用大写缩写，父商品与 ASIN 的表头和数据在同一行完整显示、不得跨行；店铺名称与 MSKU 保留足够列宽；第六列品名固定宽 220px，允许完整换行并随行高增长，不得裁切、隐藏或用省略号代替。七列冻结区宽度锁定为 824px；这次新增品名使冻结区比 V6 加宽，不能为保持旧比例而压缩店铺名称、MSKU 或品名。四模块每条明细行的全部表头和单元格内容都必须在各自行高内上下居中，含换行品名、备注、数字、状态徽章与“未启用”；文字保持正常横排，不改成竖排。数值列——第 8–12、14–34、36–42 列（从 1 开始计数）——标题 `<th>` 与内容 `<td>` 都加 `num` 类且水平居中；文字列（含品名）保持左对齐。数值列中的“未启用”也居中。不得只调整数值而不调整对应标题，或用空格人为对齐。
 
 四个明细模块的前七列——运营负责人、站点、店铺名称、父商品、MSKU、品名、ASIN——必须**同时冻结表头与对应数据单元格**；第 8 列起正常随 `.table-wrap` 横向滚动。按上述固定列宽，从左到右七列的 `left` 偏移量固定为 `0、76、124、236、340、500、720` px，冻结区总宽 `824` px。每个前七列的 `<th>` 和 `<td>` 都加 `frozen-col` 类及对应 `style="--freeze-left:{偏移量}px"`；第七列额外加 `freeze-edge` 类作边界阴影。表头保持 `top:0` 纵向粘附，冻结表头的层级高于普通表头和冻结数据格，冻结单元格使用不透明底色，横向滚动时不得被后方数值透出或盖住。四个模块的列顺序、冻结偏移、背景和层级必须一致；CSV 保持完整 45 列，不因页面冻结而改列或少列。
 
@@ -346,126 +354,25 @@ const frozenStyle = i => i<7 ? ` style="--freeze-left:${frozenLeftPx[i]}px"` : '
 
 由于七列固定区宽 `824px`，在视口宽度 `≤1280px` 时为避免覆盖绝大部分表格，**仅取消横向冻结**，仍保留完整 45 列及表头 `top:0` 的纵向冻结，改由 `.table-wrap` 横向滚动查看各列；较宽视口必须完整冻结七列。该响应式例外只影响显示，不改变筛选、业务结果或 CSV。
 
-### 3.1 锁定视觉模板 `FBA-BI-PURPLE-PINK-V7`
+### 3.1 包内唯一视觉母版 `FBA-BI-PURPLE-PINK-V8`
 
-此处的 V7 仅标识离线看板呈现与交互契约；第 1.3 节两种载体共用的`在线备货表 V2-周期参数`字段契约不变，不因看板版本更新要求运营换表或做旧表迁移。标题卡第三行仅按第 3 节的已选来源作固定文案切换，不改变三行布局、配色或模块结构；本次增加四模块及 CSV 共用的品名列与筛选区品名控件，并同步列宽、冻结与验收契约。
+V8 源于用户确认的“跨站归属模拟”页面实现，保留其紫粉配色、三行白字标题、七卡、四个动作模块、45 列宽表、八个内嵌搜索下拉框、前七列冻结与数量切换交互。正式代码仅使用本包 `assets/dashboard_template.html`；该文件不含模拟商品、示例店铺、示例周期、真实数据或本机绝对路径。模板 SHA-256 固定为 `c95af97b0654b94e192f1292c4b388411309e420a715f8bef36f700d67ed5acd`。模板、输入格式或校验指纹不匹配时停止，不由执行 Agent 临时重绘页面。V8 是看板呈现版本，不改变四表的`在线备货表 V2-周期参数`字段契约，不要求旧表迁移。
 
-所有环境必须使用相同 DOM 顺序、CSS 令牌、卡片位置、45 列宽度映射、前七列冻结、八个单控件搜索下拉框、默认展开状态和交互。HTML 自包含，CSS、正式数据与 JavaScript 全部内嵌；不引用网络、CDN、外部图片／字体／脚本／样式、本机模拟文件或其他本机文件。执行者只需本提示词中的内置规则，不得要求读取另一个人电脑上的看板样例。不根据系统主题换色。以下骨架与 CSS 是**生成契约的一部分而非完整可执行模板**：不得只输出骨架或沿用旧版 44 列、模拟版 34 列；必须在同一 HTML 内实现第 3 节规定的全部数据渲染、筛选、排序、模块展开、CSV 与安全转义，并逐项验收。不同运行环境如因浏览器／字体产生细微像素差异，不得声称字节级或像素级完全相同；结构、列宽、颜色令牌、文案、结果与交互必须满足同一版本契约。固定骨架：
+完成第 2 节全部正式数据校验与计算后，才可把本次不可变的 45 列商品明细、未舍入排序月数、在途已含阶段、FBM 剔除量与归零前建议量写入运行工作区的 JSON 输入。使用 Node.js 20 或更新版本运行包内 `scripts/render_dashboard.mjs --input <已校验结果.json> --output <新看板.html>`。该入口只校验输入、按固定特殊备注模板组装文字，并填入母版的标题、来源和数据三个插槽；不获取 MCP、不推断销量／库存、不改变业务动作、DOM、CSS 或交互。缺少 Node.js、母版、指纹、输入字段或运行能力时阻断正式 HTML 交付。输出文件已存在时须由运行者显式指定 `--overwrite`，不得意外覆盖其他文件。输入 JSON 属于本次运行数据，不随 Skill 发布，也不作为下一期正式计算缓存。
 
-```html
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>跨境吴老师 亚马逊 FBA 备货 BI 看板</title></head><body><main id="fba-dashboard" class="dash" data-template-version="FBA-BI-PURPLE-PINK-V7"><!-- 仅三行白字的标题卡与前四张指标卡 --><!-- 后三张指标卡 --><!-- 八个单控件搜索下拉框 --><!-- 四个默认展开且前七列冻结的动作明细模块 --></main></body></html>
-```
+输入顶层固定为 `templateVersion`、`generatedAt`（北京时间 `YYYY-MM-DD HH:mm`）、`period`（`YYYY-Www`）、`periodStart`、`periodEnd`、`sourceMode`（`online` 或 `upload`）、`totalProducts` 与 `rows`。每条 `rows[]` 以母版 `fields` 的 45 个展示键为准，`includedLabel` 和 `note` 由渲染器生成、不接受外部自由文字；另须提供 `includedStages`、`monthsRaw`、`nonFbaExcludedQty`、`fbmExcludedQty`、`rawAir`、`rawRail`、`rawSea` 供防重、排序及动作审计。其中 `nonFbaExcludedQty` 为本次已核实计入原始可用总库存的全部非 FBA 扣除量，`fbmExcludedQty` 为其中 FBM 可售子集且不得大于总量；这些内部审计量与归零前建议量只在渲染前校验和组备注，不进入最终 HTML 脚本载荷；`monthsRaw`只用于未舍入排序。`daily`、`monthly`及可计算的`months`由业务计算方按 ROUND_HALF_UP 输出恰好两位小数的字符串，不由前端二次四舍五入。身份、库存等核心数据缺失时不能生成占位行；`name`空值按第 1.2 节规范为`未获取`。母版接口与业务口径应分别校验，不能把渲染输入校验当成 MCP／参数表验证的替代品。
 
-固定视觉令牌与核心 CSS（可补充必要的非冲突样式，不得改变这些数值）：
+固定交互与布局以本包母版实现为唯一代码来源：所有表头及单元格内容在行高内上下居中，长品名和备注可换行但不可裁切；数值标题与数值内容同列水平居中。1360px 宽视口冻结前七列，宽度与偏移按本节上方 45 列契约；≤1280px 时仅取消横向冻结，仍可在表格容器中滚动查看完整字段。筛选搜索词只缩小当前下拉菜单的选项；无匹配显示`无匹配选项`且不改变已选值，选择后才更新指标、明细及 CSV。筛选区不显示“当前筛选了几项”等额外状态文字。四模块明细默认展开，仅点击对应数量切换，筛选不重置展开状态。空结果保留表头和数量 0，单个占位提示固定为`当前筛选条件下无商品`，该提示不属于明细行；CSV 按钮仍可下载仅含表头的 UTF-8 BOM 文件。四个 CSV 文件名固定为`跨境吴老师_FBA备货_{周期}_{模块名}商品_当前筛选明细.csv`，其中模块名取`需补货／清货／加快动销／无补货需求`。HTML 与 CSV 均不展示 SID、运行 ID、快照版本、输入哈希或被剔除的内部审计字段。
 
-```css
-:root{--page:#3a147b;--panel:#9f78bf;--pink:#df5d9c;--text:#ffffff;--ink:#1a1230;--blue:#1595f9;--yellow:#f4fb20;--orange:#ff7a1a;--purple:#7a00a8;--gray:#766985;--line:rgba(255,255,255,.24)}
-*{box-sizing:border-box}
-html,body{margin:0;min-height:100%;background:#3a147b}
-body{font-family:"Microsoft YaHei","PingFang SC",Arial,sans-serif;color:var(--text);background:radial-gradient(circle at 10% 8%,rgba(255,120,220,.35),transparent 28%),linear-gradient(135deg,#40208b 0%,#801d8e 43%,#e22075 100%)}
-.dash{width:min(1360px,100%);margin:0 auto;padding:8px}
-.top{display:grid;grid-template-columns:minmax(0,1.7fr) repeat(4,minmax(0,1fr));gap:10px}
-.bottom-kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:10px}
-.tile,.panel{min-width:0;border:1.5px solid #13071e;border-radius:13px;box-shadow:0 2px 0 rgba(0,0,0,.22);overflow:hidden}
-.tile{min-height:104px;background:linear-gradient(145deg,rgba(183,126,193,.96),rgba(224,91,157,.94))}
-.title-tile{display:flex;align-items:center;padding:14px 24px;background:linear-gradient(145deg,#5a247c,#782d8e)}
-h1{margin:0;color:#fff;font-size:28px;line-height:1.2;font-weight:800;overflow-wrap:anywhere}
-.sub,.source-line{margin-top:7px;color:#fff;font-size:12px;font-weight:700;line-height:1.45;overflow-wrap:anywhere}
-.kpi{display:grid;place-content:center;min-width:0;text-align:center;padding:10px;position:relative}
-.kpi::after{content:"";position:absolute;left:0;right:0;bottom:0;height:5px;background:var(--accent)}
-.kpi .v{font-size:clamp(20px,2.2vw,28px);font-weight:900;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
-.kpi-count-button{border:0;background:transparent;color:inherit;cursor:pointer;padding:0}
-.kpi-count-button:focus-visible,.module-count:focus-visible{outline:3px solid #fff;outline-offset:3px}
-.kpi .l{margin-top:8px;font-size:12px;font-weight:700;line-height:1.45;overflow-wrap:anywhere}
-.kpi .l.with-priority{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:5px}
-.priority-icon{display:inline-block;width:21px;height:21px;flex:none;vertical-align:middle;filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))}
-.replenish{--accent:#ff5b42}.air{--accent:#ff7a1a}.rail{--accent:#1595f9}.sea{--accent:#39d98a}.clearance{--accent:#7a00a8}.accelerate{--accent:#f4fb20}.no-action{--accent:#766985}
-.panel{margin-top:14px;padding:12px 14px;background:rgba(183,126,193,.88)}
-.panel.pink{background:rgba(220,96,158,.90)}
-.filter-panel{position:relative;z-index:20;overflow:visible}
-.panel-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:10px}
-h2{margin:0;text-align:center;font-size:19px;font-weight:800;flex:1}
-button,input{font:inherit}
-.filters{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:10px}
-.filter{position:relative;display:grid;gap:5px;min-width:0}
-.filter-label{font-size:12px;font-weight:800;color:#2a1050;overflow-wrap:anywhere}
-.filter-trigger,.filter-search{width:100%;max-width:100%;min-width:0;border:1px solid #3f1a58;border-radius:7px;background:rgba(255,255,255,.94);color:#261133;padding:8px 9px;min-height:38px}
-.filter-trigger{display:flex;align-items:center;justify-content:space-between;text-align:left;cursor:pointer}
-.filter-trigger::after{content:"";flex:none;width:8px;height:8px;margin-left:8px;border-right:2px solid #261133;border-bottom:2px solid #261133;transform:translateY(-2px) rotate(45deg)}
-.filter-trigger[aria-expanded="true"]::after{transform:translateY(2px) rotate(225deg)}
-.filter-trigger-text{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.filter-menu{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:30;padding:7px;background:#fff;color:#261133;border:1px solid #3f1a58;border-radius:8px;box-shadow:0 10px 24px rgba(25,4,40,.4)}
-.filter-menu[hidden]{display:none}
-.filter-search::placeholder{color:#705d78;opacity:1}
-.filter-options{max-height:210px;overflow:auto;margin-top:6px}
-.filter-option{display:block;width:100%;border:0;border-radius:5px;background:transparent;color:#261133;text-align:left;padding:8px 9px;cursor:pointer;overflow-wrap:anywhere}
-.filter-option:hover,.filter-option:focus-visible{background:#f3d7ee}
-.filter-option[aria-selected="true"]{background:#ead0ef;font-weight:800}
-.filter-empty{padding:8px 9px;color:#705d78;font-size:12px}
-.filter-trigger:focus-visible,.filter-search:focus-visible{outline:2px solid #fff;outline-offset:2px}
-.csv-btn,.reset-btn{border:1px solid #251035;border-radius:7px;background:#5f2385;color:#fff;padding:7px 11px;font-size:12px;font-weight:800;cursor:pointer;box-shadow:0 1px 0 rgba(0,0,0,.25)}
-.csv-btn:hover,.reset-btn:hover{background:#752a9e}
-.filter-status{margin-top:9px;text-align:right;font-size:12px;font-weight:800;color:#2a1050}
-.module{padding:0}
-.module-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding:12px 14px}
-.module-title{display:flex;align-items:center;flex-wrap:wrap;min-width:0;gap:9px;font-size:19px;font-weight:900;overflow-wrap:anywhere}
-.module-title::before{content:"";width:10px;height:28px;border-radius:5px;background:var(--module-accent)}
-.module-count{display:inline-grid;place-items:center;min-width:29px;height:24px;border:0;border-radius:999px;background:rgba(30,10,42,.25);color:inherit;font-size:12px;padding:0 8px;cursor:pointer}
-.summary-actions{display:flex;align-items:center;gap:10px}
-.module-body{padding:0 14px 14px}
-.module-body[hidden]{display:none}
-.table-wrap{max-width:100%;max-height:430px;overflow:auto;scrollbar-color:#ebc8f3 #4a246a;border:1px solid rgba(0,0,0,.35);border-radius:8px}
-.table-wrap::-webkit-scrollbar{width:11px;height:11px}
-.table-wrap::-webkit-scrollbar-track{background:#4a246a}
-.table-wrap::-webkit-scrollbar-thumb{background:#ebc8f3;border:2px solid #4a246a;border-radius:999px}
-table{min-width:100%;border-collapse:collapse;table-layout:fixed;background:rgba(255,255,255,.06)}
-th,td{padding:9px 10px;border-bottom:1px solid var(--line);font-size:12px;vertical-align:middle;line-height:1.45;white-space:normal;overflow-wrap:anywhere}
-th{position:sticky;top:0;z-index:2;background:rgba(83,39,139,.97);text-align:left;vertical-align:middle;white-space:normal}
-th.frozen-col:nth-child(2),td.frozen-col:nth-child(2),th.frozen-col:nth-child(4),td.frozen-col:nth-child(4),th.frozen-col:nth-child(7),td.frozen-col:nth-child(7){white-space:nowrap;overflow-wrap:normal}
-th.frozen-col:nth-child(4),td.frozen-col:nth-child(4),th.frozen-col:nth-child(7),td.frozen-col:nth-child(7){padding-left:4px;padding-right:4px}
-td.frozen-col{position:sticky;left:var(--freeze-left);z-index:3;background:#865491}
-th.frozen-col{left:var(--freeze-left);z-index:5;background:#53278b}
-tbody tr:hover td.frozen-col{background:#9866a4}
-.freeze-edge{box-shadow:8px 0 12px -8px rgba(16,5,27,.85)}
-td.num,th.num{text-align:center;font-variant-numeric:tabular-nums}
-td.num{vertical-align:middle}
-tbody tr:hover{background:rgba(255,255,255,.10)}
-.action-badge{display:inline-block;padding:3px 7px;border-radius:999px;font-weight:900;color:#fff;white-space:nowrap}
-.action-replenish{background:#d94732}.action-clearance{background:#6e138f}.action-accelerate{background:#b57b00}.action-none{background:#665c70}
-.status-new{color:#fff1a8;font-weight:900}.status-normal{color:#fff}.status-unknown{color:#2a1050;font-weight:900}.disabled{color:#eadcf3;font-style:italic}.empty{padding:28px;text-align:center;font-weight:800}
-.module-replenish{--module-accent:#ff5b42}.module-clearance{--module-accent:#7a00a8}.module-accelerate{--module-accent:#f4fb20}.module-none{--module-accent:#766985;opacity:.88}
-@media(max-width:1100px){.top{grid-template-columns:minmax(0,1.6fr) repeat(2,minmax(0,1fr))}.title-tile{grid-row:span 2}.filters{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:1280px){td.frozen-col{position:static}th.frozen-col{left:auto;z-index:2}.freeze-edge{box-shadow:none}}
-@media(max-width:720px){.top,.bottom-kpis,.filters{grid-template-columns:1fr}.title-tile{grid-row:auto}h1{font-size:24px}.module-head{align-items:flex-start;flex-direction:column}.summary-actions{width:100%;justify-content:space-between}}
-```
-
-八个控件使用相同的内嵌结构，以下仅示意“运营负责人”；其它七个控件只替换标签、可见业务值和安全的前端键 `site/shop/parent/msku/name/asin/action`，不得显示任何内部店铺 ID 或外部追踪 ID。`name` 对应可见标签`品名`，固定在 MSKU 与 ASIN 控件之间。闭合时只显示 `.filter-trigger` 一个可操作框；`.filter-search` 只位于隐藏的 `.filter-menu` 内，打开后才出现。原生 `<select>` 内无法嵌入可编辑搜索项，故使用此自包含控件，不依赖第三方组件：
-
-```html
-<div class="filter">
-  <span class="filter-label">运营负责人</span>
-  <button type="button" class="filter-trigger" id="filter-trigger-owner" data-filter-trigger="owner" aria-label="运营负责人：全部" aria-haspopup="listbox" aria-controls="filter-menu-owner" aria-expanded="false"><span class="filter-trigger-text">全部</span></button>
-  <div class="filter-menu" id="filter-menu-owner" data-filter-menu="owner" hidden>
-    <input class="filter-search" id="filter-search-owner" data-option-search="owner" type="search" autocomplete="off" placeholder="搜索运营负责人选项" aria-label="搜索运营负责人选项">
-    <div class="filter-options" id="filter-options-owner" role="listbox" aria-label="运营负责人选项">
-      <button type="button" class="filter-option" role="option" data-filter-option="owner" data-value="" aria-selected="true">全部</button>
-      <!-- 实际运营负责人选项：按当前正式数据去重，文本和属性值均安全转义 -->
-    </div>
-  </div>
-</div>
-```
-
-下拉交互固定：由 `.filter-trigger` 打开或关闭当前菜单，打开时清空该菜单的临时搜索词并聚焦内置搜索框；输入仅重新渲染该菜单的匹配选项，不调用正式计算、不改变已生效筛选；选择选项后按该维度精确过滤并关闭菜单；“全部”清空该维度；顶部重置按钮清空所有维度及临时搜索词。选项来自本次成功计算数据的该维度去重值，不包含 `undefined`、空串或内部代码；关键词匹配不区分大小写，选项按中文排序；无匹配时保留“全部”并显示“无匹配选项”。鼠标点控件外或按 Escape 关闭，箭头键可在选项间移动，按 Enter 可选中首个搜索命中的实际选项；按钮与菜单同步 `aria-expanded`，按 Escape 或选中后焦点返回对应按钮，点击控件外时不抢夺外部目标焦点。筛选后更新数字、模块明细与 CSV，**不改变四个模块当前的展开状态**。所有动态选项和用户输入必须作为文本安全转义，不能直接拼接未转义 HTML。
-
-第一行 `.top`：左侧 `.tile.title-tile` 只包含上述固定三行；分别使用 `<h1>`、`.sub`、`.source-line`，三行均为白字，不能附加其他说明。右侧依次四卡（需补货、空运、铁路、海运）；第二行 `.bottom-kpis` 依次三卡（清货、加快动销、无补货）。指标底部 5px 强调色依次为`#ff5b42`、`#ff7a1a`、`#1595f9`、`#39d98a`、`#7a00a8`、`#f4fb20`、`#766985`。清货、加快动销两张指标卡的文字标题旁，以及各自模块的文字标题旁，分别插入前述完全相同的内嵌 SVG 图标；图标不得放在数量按钮内部。筛选区后直接是四个默认显示明细的模块，依次使用`module module-replenish panel pink`、`module module-clearance panel`、`module module-accelerate panel pink`、`module module-none panel`。
-
-固定 ID：七卡数值为`kpi-replenish`、`kpi-air`、`kpi-rail`、`kpi-sea`、`kpi-clearance`、`kpi-accelerate`、`kpi-none`；筛选容器`filters`、状态`filter-status`、重置按钮`reset-filters`、四模块容器`modules`。八个筛选键为`owner/site/shop/parent/msku/name/asin/action`，每个键分别生成`filter-trigger-{键}`、`filter-menu-{键}`、`filter-search-{键}`和`filter-options-{键}`；菜单初始化为 `hidden`，无外置搜索输入框，也不另设原生 `<select>`。品名筛选键 `name` 使用本次已映射的商品品名展示值，绝不使用内部代码。每个模块用普通 `<section>`、不可点击的标题和独立的数量 `<button type="button">`，明细容器默认不带 `hidden`；四个动作卡片的数字也用独立按钮，运量卡片数字不是展开开关。数量按钮以 `aria-controls` 指向对应明细容器，使用 `aria-expanded` 同步当前状态。仅数量按钮能切换 `hidden`，标题及其余区域无切换事件；CSV 按钮独立下载，不切换展开状态。筛选变化只做展示、统计与 CSV 导出，不在前端重算业务动作，且保留当前各模块展开状态。商品文本必须安全转义，嵌入脚本数据安全 JSON 序列化；禁止把品名、备注、促销名称直接拼入 HTML／JavaScript。
-
-前端渲染顺序固定为：注入本次验证通过的不可变商品明细（包含按本次正式 Listing 精确匹配的品名） → 从业务展示字段构造八个筛选选项（品名空值使用`未获取`） → 以八维精确相等求交集 → 按`最终动作`把每条商品分入且仅分入一个模块 → 按本节固定规则排序 → 从相同的已筛选结果计算七卡、模块计数、45 列行与 CSV。筛选搜索词本身不是已生效筛选；展开／收起状态只控制明细容器 `hidden`，不改变交集、指标或 CSV。除标题生成时间外，渲染不得引用当前时间、随机数、网络响应或本地模拟数据改变同一输入的结果；相同正式数据与筛选状态应得到相同的计数、行序和 CSV 字节序。若任何控件、45 列或 CSV 功能无法在单文件离线 HTML 中实现并通过验收，阻断正式交付，不得只交付静态截图或半成品骨架。
+生成后按同一输入复算或进行等效结构校验：母版指纹、三个插槽填充、45 列顺序与宽度、八个筛选器、四模块动作互斥、七卡顺序、白字标题、两处重点及两处次重点图标、垂直居中、空状态、CSV BOM 和公式注入防护。可用时以同一浏览器、视口、缩放及字体检查桌面和窄屏；无法做视觉测试时只报告已完成的结构与脚本检查，不声称跨环境逐像素一致。最终文件必须单文件离线可用，不依赖包内母版路径、CDN 或网络资源。
 
 ### 3.2 离线与交付验收
 
 生成后校验：固定三行白字标题卡且无额外说明、第三行与当前在线／上传来源一致、深紫色标题底、模板版本、七卡顺序、清货与加快动销的四处图标形状和颜色完全一致且没有可见文字框、四模块一商品一动作、四模块首次均显示明细、仅点击数量可收起／展开且 `aria-expanded` 正确、筛选／重置不改变展开状态、CSV 文件 BOM、断网可用、无外部资源引用、无脚本错误。逐一测试八个筛选控件：闭合时每项仅一个下拉框；打开时搜索只在选项列表内部；输入不提前改变数据，选中后才生效；“全部”、无匹配、重置、交集、Escape、Enter、控件外关闭和键盘焦点行为正确。品名筛选要测试同名多 MSKU、空名`未获取`、搜索词不直接过滤、与其他维度取交集，以及选中后七卡、四模块明细及 CSV 同步。逐列检查四模块均有完整 45 列与相同 `<colgroup>`，表宽 6378px；第六列品名在 MSKU 与 ASIN 之间，四模块与 CSV 中每一行均映射到本次正式 `erp_listing` 的同店铺、同 MSKU 商品，空名统一显示`未获取`，长名称完整换行且不裁切。非冻结列内容完整换行且无截断，站点大写缩写、父商品与 ASIN 单行完整显示，店铺名称与 MSKU 不裁切，所有行垂直居中，数值列标题和内容同列水平居中。站点筛选、页面明细及 CSV 的缩写必须一致，参数表站点原文及匹配键不得被改写。在 1360px 视口横向滚动各模块时，前七列对应表头和数据保持固定，冻结区宽 824px、偏移精确且无透底／遮挡，非冻结区仍可读；在 390px 视口七列取消横向固定但表头仍纵向固定，所有列可通过 `.table-wrap` 查看。两个视口都检查主体无横向溢出、七卡文案、筛选下拉层和按钮不裁切，宽表只在 `.table-wrap` 内滚动。验证第 2.4 节零销量边界样例、清货分组排序及备注，确保模拟月数不冒充真实支持月数，零销量促销冲突的补货量已归零，四动作计数守恒。还须用合成行核对：FBA 查询行只有 FBM 可售时补货扣减库存为 0；接收中与实际在途同值时只按标准生命周期计一次；原始可用总库存含非零 FBM 可售时，明细与 CSV 的备注均说明已剔除数量。只禁止 HTML 的外部资源引用和网络请求，不因商品名称或备注中出现普通网址文字而误判失败。无法实际浏览器渲染时至少完成静态 HTML／CSS／JavaScript 语法、DOM、数据一致性与外部引用检查，并如实说明未完成浏览器视觉验收。正式 HTML 只注入本次成功计算数据，不含模拟商品或示例店铺。
+
+精度验收：用合成计算值核对四模块和 CSV 的`加权平均日销量`、`加权月销量`、`库存可支持月数`均显示恰好两位小数（包括末尾零），备注中的支持月数也为两位；HTML 与 CSV 对同一值的显示一致。以未舍入支持月数 6.004→显示 6.00 但仍命中清货、4.004→显示 4.00 但仍命中加快动销，验证阈值和排序均不使用展示值；零销量的实际支持月数仍为`无法计算（销量为 0）`，零销量特殊清货的 7 件模拟备注显示 7.00 个月。新品状态验收：创建日期距 D 恰好 90 天→`新品`，91 天→`非新品`，创建日期在 D 之后且不晚于站点当地今天→`新品`，创建日期为空→`未知`；四模块及 CSV 对同一商品须一致，该列不得出现 `0`、`1`、`2`、`true`、`false` 或空值。
+最终动作验收：分别构造清货、加快动销、需补货、无补货需求样例，核对每条商品在正确模块、`最终动作`明细列、动作分类筛选和 CSV 中均使用相同的固定中文值；构造清货／加快动销与需补货同时命中样例，核对仅输出优先级更高的动作且建议补货量归零。注入非法动作码、空值或并列动作时必须阻断，不得默认归入无补货需求。
+备注验收：在四个模块各构造无特殊情况的普通商品，HTML 单元格与 CSV 字段都必须为空，即使该商品的参数表人工备注非空也不得自动带入；分别构造 FBM 剔除、零销量特殊清货、零销量未特殊清货、清货／加快动销覆盖补货的样例，检查对应固定短句齐全。再构造 FBM 剔除＋零销量特殊清货＋促销补货被清货覆盖的组合样例，检查顺序一致、未漏原因且未重复附加旧版详细阈值／归零前后数值；普通商品不得出现`未获取`、`正常`或通用公式说明。HTML 与 CSV 对同一行的备注须逐字一致，人工备注仍完整保留在本期参数／快照中。
 
 额外固定验收边界：站点当地今天新建、晚于 D 但不晚于今天的 Listing 不得因“未来日期”被阻断，必须判新品且不命中零销量特殊清货；运营在第一阶段成功后新填的生产及站点参数，不能因快照系统副本滞后而被第二阶段误判为篡改；零值差异占比必须使用第 2.3 节明确分母；缺失站点代码的可靠来源、配置仅给候选项且完整行仍无法唯一复算实际可用量组成、或存在不成对成功记录的受控字段修改时，分别按第 1.2、2.2、2.1 节阻断或安全恢复，不能靠猜测补齐。首尾日期包含性按第 2.3 节的统一口径与逐店凭据复用规则执行；美国站实测不冒充全部站点均已验证或领星官方保证，缺失／失效凭据不视为验证通过，不能因专项核验缓存而跳过本次正式销量或数据质量检查。
 

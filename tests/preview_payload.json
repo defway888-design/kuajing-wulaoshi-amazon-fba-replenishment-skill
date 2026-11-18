@@ -1,0 +1,21 @@
+{
+  "templateVersion": "FBA-BI-PURPLE-PINK-V8",
+  "generatedAt": "2026-11-18 12:00",
+  "period": "2026-W47",
+  "periodStart": "2026-11-16",
+  "periodEnd": "2026-11-22",
+  "sourceMode": "upload",
+  "totalProducts": 1,
+  "rows": [{
+    "owner": "模拟运营", "site": "US", "shop": "示例店铺", "parent": "B000000001", "msku": "SAMPLE-MSKU-001",
+    "name": "示例本地商品名称：女士轻量缓震透气宽楦日常健走运动鞋 黑色大码款", "asin": "B000000001",
+    "avail": 2, "working": 0, "shipped": 0, "real": 0, "receiving": 0, "includedStages": [], "includedQty": 0,
+    "nonFbaExcludedQty": 2, "fbmExcludedQty": 2, "base": 0, "transit": 0, "deduct": 0, "fba": 0,
+    "d30": 30, "d14": 14, "d7": 7, "daily": "1.00", "monthly": "30.00",
+    "production": 0, "domestic": 0, "airStart": null, "airDays": null, "railStart": null, "railDays": null,
+    "seaStart": 0, "seaDays": 30, "listingDays": 0, "safety": 1.1, "promo": 0, "promoName": "",
+    "airCover": 0, "railCover": 0, "seaCover": 30,
+    "rawAir": 0, "rawRail": 0, "rawSea": 33, "air": 0, "rail": 0, "sea": 33,
+    "months": "0.00", "monthsRaw": 0, "newStatus": "新品", "action": "需补货"
+  }]
+}

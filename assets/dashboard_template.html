@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="description" content="跨境吴老师亚马逊 FBA 备货单文件离线 BI 看板。">
+<title>跨境吴老师 亚马逊 FBA 备货 BI 看板</title>
+<style>
+:root{--page:#3a147b;--panel:#9f78bf;--pink:#df5d9c;--text:#ffffff;--ink:#1a1230;--blue:#1595f9;--yellow:#f4fb20;--orange:#ff7a1a;--purple:#7a00a8;--gray:#766985;--line:rgba(255,255,255,.24)}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:#3a147b}
+body{font-family:"Microsoft YaHei","PingFang SC",Arial,sans-serif;color:var(--text);background:radial-gradient(circle at 10% 8%,rgba(255,120,220,.35),transparent 28%),linear-gradient(135deg,#40208b 0%,#801d8e 43%,#e22075 100%)}
+.dash{width:min(1360px,100%);margin:0 auto;padding:8px}
+.top{display:grid;grid-template-columns:minmax(0,1.7fr) repeat(4,minmax(0,1fr));gap:10px}
+.bottom-kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:10px}
+.tile,.panel{min-width:0;border:1.5px solid #13071e;border-radius:13px;box-shadow:0 2px 0 rgba(0,0,0,.22);overflow:hidden}
+.tile{min-height:104px;background:linear-gradient(145deg,rgba(183,126,193,.96),rgba(224,91,157,.94))}
+.title-tile{display:flex;align-items:center;padding:14px 24px;background:linear-gradient(145deg,#5a247c,#782d8e)}
+h1{margin:0;color:#fff;font-size:28px;line-height:1.2;font-weight:800;overflow-wrap:anywhere}
+.sub,.source-line{margin-top:7px;color:#fff;font-size:12px;font-weight:700;line-height:1.45;overflow-wrap:anywhere}
+.kpi{display:grid;place-content:center;min-width:0;text-align:center;padding:10px;position:relative}
+.kpi::after{content:"";position:absolute;left:0;right:0;bottom:0;height:5px;background:var(--accent)}
+.kpi .v{font-size:clamp(20px,2.2vw,28px);font-weight:900;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.kpi-count-button{border:0;background:transparent;color:inherit;cursor:pointer;padding:0}
+.kpi-count-button:focus-visible,.module-count:focus-visible{outline:3px solid #fff;outline-offset:3px}
+.kpi .l{margin-top:8px;font-size:12px;font-weight:700;line-height:1.45;overflow-wrap:anywhere}
+.kpi .l.with-priority{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:5px}
+.priority-icon{display:inline-block;width:21px;height:21px;flex:none;vertical-align:middle;filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))}
+.replenish{--accent:#ff5b42}.air{--accent:#ff7a1a}.rail{--accent:#1595f9}.sea{--accent:#39d98a}.clearance{--accent:#7a00a8}.accelerate{--accent:#f4fb20}.no-action{--accent:#766985}
+.panel{margin-top:14px;padding:12px 14px;background:rgba(183,126,193,.88)}
+.panel.pink{background:rgba(220,96,158,.90)}
+.filter-panel{position:relative;z-index:20;overflow:visible}
+.panel-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:10px}
+h2{margin:0;text-align:center;font-size:19px;font-weight:800;flex:1}
+button,input{font:inherit}
+.filters{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:10px}
+.filter{position:relative;display:grid;gap:5px;min-width:0}
+.filter-label{font-size:12px;font-weight:800;color:#2a1050;overflow-wrap:anywhere}
+.filter-trigger,.filter-search{width:100%;max-width:100%;min-width:0;border:1px solid #3f1a58;border-radius:7px;background:rgba(255,255,255,.94);color:#261133;padding:8px 9px;min-height:38px}
+.filter-trigger{display:flex;align-items:center;justify-content:space-between;text-align:left;cursor:pointer}
+.filter-trigger::after{content:"";flex:none;width:8px;height:8px;margin-left:8px;border-right:2px solid #261133;border-bottom:2px solid #261133;transform:translateY(-2px) rotate(45deg)}
+.filter-trigger[aria-expanded="true"]::after{transform:translateY(2px) rotate(225deg)}
+.filter-trigger-text{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.filter-menu{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:30;padding:7px;background:#fff;color:#261133;border:1px solid #3f1a58;border-radius:8px;box-shadow:0 10px 24px rgba(25,4,40,.4)}
+.filter-menu[hidden]{display:none}
+.filter-search::placeholder{color:#705d78;opacity:1}
+.filter-options{max-height:210px;overflow:auto;margin-top:6px}
+.filter-option{display:block;width:100%;border:0;border-radius:5px;background:transparent;color:#261133;text-align:left;padding:8px 9px;cursor:pointer;overflow-wrap:anywhere}
+.filter-option:hover,.filter-option:focus-visible{background:#f3d7ee}
+.filter-option[aria-selected="true"]{background:#ead0ef;font-weight:800}
+.filter-empty{padding:8px 9px;color:#705d78;font-size:12px}
+.filter-trigger:focus-visible,.filter-search:focus-visible{outline:2px solid #fff;outline-offset:2px}
+.csv-btn,.reset-btn{border:1px solid #251035;border-radius:7px;background:#5f2385;color:#fff;padding:7px 11px;font-size:12px;font-weight:800;cursor:pointer;box-shadow:0 1px 0 rgba(0,0,0,.25)}
+.csv-btn:hover,.reset-btn:hover{background:#752a9e}
+.filter-status{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.module{padding:0}
+.module-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding:12px 14px}
+.module-title{display:flex;align-items:center;flex-wrap:wrap;min-width:0;gap:9px;font-size:19px;font-weight:900;overflow-wrap:anywhere}
+.module-title::before{content:"";width:10px;height:28px;border-radius:5px;background:var(--module-accent)}
+.module-count{display:inline-grid;place-items:center;min-width:29px;height:24px;border:0;border-radius:999px;background:rgba(30,10,42,.25);color:inherit;font-size:12px;padding:0 8px;cursor:pointer}
+.summary-actions{display:flex;align-items:center;gap:10px}
+.module-body{padding:0 14px 14px}
+.module-body[hidden]{display:none}
+.table-wrap{max-width:100%;max-height:430px;overflow:auto;scrollbar-color:#ebc8f3 #4a246a;border:1px solid rgba(0,0,0,.35);border-radius:8px}
+.table-wrap::-webkit-scrollbar{width:11px;height:11px}
+.table-wrap::-webkit-scrollbar-track{background:#4a246a}
+.table-wrap::-webkit-scrollbar-thumb{background:#ebc8f3;border:2px solid #4a246a;border-radius:999px}
+table{min-width:100%;border-collapse:collapse;table-layout:fixed;background:rgba(255,255,255,.06)}
+th,td{padding:9px 10px;border-bottom:1px solid var(--line);font-size:12px;vertical-align:middle;line-height:1.45;white-space:normal;overflow-wrap:anywhere}
+thead th,tbody td{vertical-align:middle}
+th{position:sticky;top:0;z-index:2;background:rgba(83,39,139,.97);text-align:left;vertical-align:middle;white-space:normal}
+th.frozen-col:nth-child(2),td.frozen-col:nth-child(2),th.frozen-col:nth-child(4),td.frozen-col:nth-child(4),th.frozen-col:nth-child(7),td.frozen-col:nth-child(7){white-space:nowrap;overflow-wrap:normal}
+th.frozen-col:nth-child(4),td.frozen-col:nth-child(4),th.frozen-col:nth-child(7),td.frozen-col:nth-child(7){padding-left:4px;padding-right:4px}
+td.frozen-col{position:sticky;left:var(--freeze-left);z-index:3;background:#865491}
+th.frozen-col{left:var(--freeze-left);z-index:5;background:#53278b}
+tbody tr:hover td.frozen-col{background:#9866a4}
+.freeze-edge{box-shadow:8px 0 12px -8px rgba(16,5,27,.85)}
+td.num,th.num{text-align:center;font-variant-numeric:tabular-nums}
+td.num{vertical-align:middle}
+tbody tr:hover{background:rgba(255,255,255,.10)}
+.action-badge{display:inline-block;vertical-align:middle;padding:3px 7px;border-radius:999px;font-weight:900;color:#fff;white-space:nowrap}
+.action-replenish{background:#d94732}.action-clearance{background:#6e138f}.action-accelerate{background:#b57b00}.action-none{background:#665c70}
+.status-new{color:#fff1a8;font-weight:900}.status-normal{color:#fff}.status-unknown{color:#2a1050;font-weight:900}.disabled{color:#eadcf3;font-style:italic}.empty-state{position:sticky;left:0;width:100%;padding:28px;text-align:center;font-weight:800}
+.module-replenish{--module-accent:#ff5b42}.module-clearance{--module-accent:#7a00a8}.module-accelerate{--module-accent:#f4fb20}.module-none{--module-accent:#766985;opacity:.88}
+@media(max-width:1100px){.top{grid-template-columns:minmax(0,1.6fr) repeat(2,minmax(0,1fr))}.title-tile{grid-row:span 2}.filters{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:1280px){td.frozen-col{position:static}th.frozen-col{left:auto;z-index:2}.freeze-edge{box-shadow:none}}
+@media(max-width:720px){.top,.bottom-kpis,.filters{grid-template-columns:1fr}.title-tile{grid-row:auto}h1{font-size:24px}.module-head{align-items:flex-start;flex-direction:column}.summary-actions{width:100%;justify-content:space-between}}
+</style>
+</head>
+<body>
+<main id="fba-dashboard" class="dash" data-template-version="FBA-BI-PURPLE-PINK-V8">
+  <section class="top" aria-label="标题和主要补货指标">
+    <div class="tile title-tile"><div>
+      <h1>跨境吴老师 亚马逊 FBA 备货 BI 看板</h1>
+      <div class="sub">__FBA_SUB__</div>
+      <div class="source-line">__FBA_SOURCE__</div>
+    </div></div>
+    <div class="tile kpi replenish"><button type="button" class="v kpi-count-button" id="kpi-replenish" data-toggle-module="需补货" aria-controls="module-body-replenish" aria-expanded="true">0</button><div class="l">需补货商品数</div></div>
+    <div class="tile kpi air"><div class="v" id="kpi-air">0</div><div class="l">空运建议补货总量</div></div>
+    <div class="tile kpi rail"><div class="v" id="kpi-rail">0</div><div class="l">铁路建议补货总量</div></div>
+    <div class="tile kpi sea"><div class="v" id="kpi-sea">0</div><div class="l">海运建议补货总量</div></div>
+  </section>
+  <section class="bottom-kpis" aria-label="库存动作指标">
+    <div class="tile kpi clearance"><button type="button" class="v kpi-count-button" id="kpi-clearance" data-toggle-module="清货" aria-controls="module-body-clearance" aria-expanded="true">0</button><div class="l with-priority">清货商品数 <svg class="priority-icon" viewBox="0 0 24 24" role="img" aria-label="重点提醒" focusable="false"><circle cx="12" cy="12" r="9.4" fill="#ffe789" stroke="#513500" stroke-width="1.6"/><path d="M12 6.5v7" stroke="#513500" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="17.3" r="1.2" fill="#513500"/></svg></div></div>
+    <div class="tile kpi accelerate"><button type="button" class="v kpi-count-button" id="kpi-accelerate" data-toggle-module="加快动销" aria-controls="module-body-accelerate" aria-expanded="true">0</button><div class="l with-priority">加快动销商品数 <svg class="priority-icon" viewBox="0 0 24 24" role="img" aria-label="次重点提醒" focusable="false"><circle cx="12" cy="12" r="9.4" fill="#ffe789" stroke="#513500" stroke-width="1.6"/><path d="M12 6.5v7" stroke="#513500" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="17.3" r="1.2" fill="#513500"/></svg></div></div>
+    <div class="tile kpi no-action"><button type="button" class="v kpi-count-button" id="kpi-none" data-toggle-module="无补货需求" aria-controls="module-body-none" aria-expanded="true">0</button><div class="l">无补货需求商品数</div></div>
+  </section>
+  <section class="panel filter-panel">
+    <div class="panel-head"><h2>筛选区</h2><button type="button" class="reset-btn" id="reset-filters">重置筛选</button></div>
+    <div class="filters" id="filters"></div>
+    <div class="filter-status" id="filter-status" aria-live="polite"></div>
+  </section>
+  <div id="modules"></div>
+</main>
+<script>
+(() => {
+  'use strict';
+  const root = document.getElementById('fba-dashboard');
+  const moduleNames = ['需补货','清货','加快动销','无补货需求'];
+  const moduleIds = {'需补货':'replenish','清货':'clearance','加快动销':'accelerate','无补货需求':'none'};
+  const filterDefs = [['owner','运营负责人'],['site','站点'],['shop','店铺名称'],['parent','父商品'],['msku','MSKU'],['name','品名'],['asin','ASIN'],['action','动作分类']];
+  const detailColumns = [
+    '运营负责人','站点','店铺名称','父商品','MSKU','品名','ASIN','可用总库存','计划入库','标发在途','实际在途','接收中',
+    '可用总库存已含阶段','已含在途扣除量','非在途可用库存基数','标准生命周期在途库存','补货计算扣减库存','FBA 可售库存',
+    '最近 30 天销量','最近 14 天销量','最近 7 天销量','加权平均日销量','加权月销量','生产天数','国内到货天数',
+    '空运起运天数','空运天数','铁路起运天数','铁路天数','海运起运天数','海运天数','亚马逊上架天数','安全系数',
+    '本周促销备货数量','促销活动名称','空运覆盖天数','铁路覆盖天数','海运覆盖天数','空运建议补货量',
+    '铁路建议补货量','海运建议补货量','库存可支持月数','新品状态','最终动作','备注'
+  ];
+  const detailWidthsPx = [
+    76,48,112,104,160,220,104,132,116,116,116,108,182,156,174,188,174,140,
+    126,126,126,156,140,112,136,136,112,136,112,136,112,150,112,156,170,
+    140,140,140,160,160,160,168,138,132,360
+  ];
+  const fields = [
+    'owner','site','shop','parent','msku','name','asin','avail','working','shipped','real','receiving',
+    'includedLabel','includedQty','base','transit','deduct','fba','d30','d14','d7','daily','monthly',
+    'production','domestic','airStart','airDays','railStart','railDays','seaStart','seaDays','listingDays',
+    'safety','promo','promoName','airCover','railCover','seaCover','air','rail','sea','months','newStatus','action','note'
+  ];
+  const frozenLeftPx = [0,76,124,236,340,500,720];
+  if (detailColumns.length !== 45 || detailWidthsPx.length !== 45 || fields.length !== 45 ||
+      detailWidthsPx.reduce((a,b) => a+b,0) !== 6378 || detailWidthsPx.slice(0,7).reduce((a,b) => a+b,0) !== 824 ||
+      detailColumns[5] !== '品名' || detailColumns[6] !== 'ASIN') throw Error('看板列契约不完整');
+  for (let i=1;i<7;i++) if (frozenLeftPx[i] !== frozenLeftPx[i-1]+detailWidthsPx[i-1]) throw Error('冻结偏移不一致');
+
+  const payload=__FBA_PAYLOAD_JSON__;
+  const rows=Object.freeze(payload.rows.map(r=>Object.freeze(r)));
+  if(rows.length!==payload.totalProducts || moduleNames.reduce((n,a)=>n+rows.filter(r=>r.action===a).length,0)!==rows.length) throw Error('正式动作数量不守恒');
+
+  const state=Object.fromEntries(filterDefs.map(([key])=>[key,'']));
+  const searches=Object.fromEntries(filterDefs.map(([key])=>[key,'']));
+  const expanded=Object.fromEntries(moduleNames.map(action=>[action,true]));
+  let openKey=null;
+  const escapeHtml=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  const number=v=>Number(v).toLocaleString('zh-CN');
+  const lowered=v=>String(v??'').trim().toLocaleLowerCase('zh-CN');
+  const isNumeric=i=>(i>=7&&i<=11)||(i>=13&&i<=33)||(i>=35&&i<=41);
+  const visible=()=>rows.filter(r=>filterDefs.every(([key])=>!state[key]||String(r[key])===state[key]));
+  const compareText=(a,b)=>a<b?-1:a>b?1:0;
+  const tie=(a,b)=>compareText(a.site,b.site)||compareText(a.shop,b.shop)||compareText(a.msku,b.msku);
+  function sorted(action,data){
+    const list=data.filter(r=>r.action===action).slice();
+    if(action==='需补货')return list.sort((a,b)=>b.sea-a.sea||b.rail-a.rail||b.air-a.air||tie(a,b));
+    if(action==='加快动销')return list.sort((a,b)=>b.monthsRaw-a.monthsRaw||tie(a,b));
+    if(action==='清货')return list.sort((a,b)=>Number(a.monthsRaw===null)-Number(b.monthsRaw===null)||(a.monthsRaw===null?b.fba-a.fba:b.monthsRaw-a.monthsRaw)||tie(a,b));
+    return list.sort((a,b)=>compareText(a.parent,b.parent)||tie(a,b));
+  }
+  function optionHtml(key){
+    const query=lowered(searches[key]);
+    const options=[...new Set(rows.map(r=>String(r[key])))].sort((a,b)=>a.localeCompare(b,'zh-CN')).filter(v=>lowered(v).includes(query));
+    const all=`<button type="button" class="filter-option" role="option" data-filter-option="${key}" data-value="" aria-selected="${state[key]===''}">全部</button>`;
+    return all+(options.length?options.map(value=>`<button type="button" class="filter-option" role="option" data-filter-option="${key}" data-value="${escapeHtml(value)}" aria-selected="${state[key]===value}">${escapeHtml(value)}</button>`).join(''):'<div class="filter-empty">无匹配选项</div>');
+  }
+  function renderFilters(){
+    root.querySelector('#filters').innerHTML=filterDefs.map(([key,label])=>`<div class="filter"><span class="filter-label">${label}</span><button type="button" class="filter-trigger" id="filter-trigger-${key}" data-filter-trigger="${key}" aria-label="${label}：${escapeHtml(state[key]||'全部')}" aria-haspopup="listbox" aria-controls="filter-menu-${key}" aria-expanded="false" title="${escapeHtml(state[key]||'全部')}"><span class="filter-trigger-text">${escapeHtml(state[key]||'全部')}</span></button><div class="filter-menu" id="filter-menu-${key}" data-filter-menu="${key}" hidden><input class="filter-search" id="filter-search-${key}" data-option-search="${key}" type="search" autocomplete="off" placeholder="搜索${label}选项" aria-label="搜索${label}选项"><div class="filter-options" id="filter-options-${key}" role="listbox" aria-label="${label}选项">${optionHtml(key)}</div></div></div>`).join('');
+    openKey=null;
+  }
+  function openFilter(key){
+    openKey=key;
+    for(const [name] of filterDefs){
+      root.querySelector(`#filter-menu-${name}`).hidden=name!==key;
+      root.querySelector(`#filter-trigger-${name}`).setAttribute('aria-expanded',String(name===key));
+    }
+    if(key){
+      searches[key]='';
+      root.querySelector(`#filter-search-${key}`).value='';
+      root.querySelector(`#filter-options-${key}`).innerHTML=optionHtml(key);
+      root.querySelector(`#filter-search-${key}`).focus();
+    }
+  }
+  function cellValue(r,i){
+    const key=fields[i];
+    if(i===41)return r.months===null?'无法计算（销量为 0）':r.months;
+    if(i===21||i===22)return r[key];
+    if([25,26,27,28].includes(i)&&r[key]===null)return '未启用';
+    if(isNumeric(i))return typeof r[key]==='number'&&Number.isInteger(r[key])?number(r[key]):String(r[key]);
+    if(key==='promoName'||key==='note')return String(r[key]??'');
+    return r[key]===null||r[key]===''?'未获取':String(r[key]);
+  }
+  function cellHtml(r,i){
+    const value=cellValue(r,i);
+    if(i===43){
+      const cls={'需补货':'action-replenish','清货':'action-clearance','加快动销':'action-accelerate','无补货需求':'action-none'}[r.action];
+      return `<span class="action-badge ${cls}">${escapeHtml(value)}</span>`;
+    }
+    if(i===42)return `<span class="${r.newStatus==='新品'?'status-new':r.newStatus==='非新品'?'status-normal':'status-unknown'}">${escapeHtml(value)}</span>`;
+    if(value==='未启用')return `<span class="disabled">未启用</span>`;
+    return escapeHtml(value);
+  }
+  const frozenClass=i=>i<7?` frozen-col${i===6?' freeze-edge':''}`:'';
+  const frozenStyle=i=>i<7?` style="--freeze-left:${frozenLeftPx[i]}px"`:'';
+  const priority=label=>`<svg class="priority-icon" viewBox="0 0 24 24" role="img" aria-label="${label}" focusable="false"><circle cx="12" cy="12" r="9.4" fill="#ffe789" stroke="#513500" stroke-width="1.6"/><path d="M12 6.5v7" stroke="#513500" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="17.3" r="1.2" fill="#513500"/></svg>`;
+  function moduleHtml(action,data){
+    const list=sorted(action,data),id=moduleIds[action];
+    const cls={'需补货':'module-replenish pink','清货':'module-clearance','加快动销':'module-accelerate pink','无补货需求':'module-none'}[action];
+    const icon=action==='清货'?priority('重点提醒'):action==='加快动销'?priority('次重点提醒'):'';
+    const cols=detailWidthsPx.map(w=>`<col style="width:${w}px">`).join('');
+    const head=detailColumns.map((label,i)=>`<th class="${isNumeric(i)?'num':''}${frozenClass(i)}"${frozenStyle(i)} title="${escapeHtml(label)}">${escapeHtml(label)}</th>`).join('');
+    const body=list.map(r=>`<tr>${fields.map((key,i)=>`<td class="${isNumeric(i)?'num':''}${frozenClass(i)}"${frozenStyle(i)}>${cellHtml(r,i)}</td>`).join('')}</tr>`).join('');
+    const empty=list.length?'':'<div class="empty-state">当前筛选条件下无商品</div>';
+    return `<section class="panel module ${cls}" data-module="${action}"><div class="module-head"><div class="module-title">${action}${icon}<button type="button" class="module-count" data-toggle-module="${action}" aria-controls="module-body-${id}" aria-expanded="${expanded[action]}" aria-label="${expanded[action]?'收起':'展开'}${action}明细">${list.length}</button></div><span class="summary-actions"><button type="button" class="csv-btn" data-export="${action}">下载当前明细 CSV</button></span></div><div class="module-body" id="module-body-${id}"${expanded[action]?'':' hidden'}><div class="table-wrap" role="region" tabindex="0" aria-label="${action}商品明细，可横向滚动查看全部字段；宽屏时左侧七列固定"><table style="width:6378px"><colgroup>${cols}</colgroup><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>${empty}</div></div></section>`;
+  }
+  function render(){
+    const data=visible();
+    const sum=key=>data.reduce((n,r)=>n+r[key],0);
+    const count=action=>data.filter(r=>r.action===action).length;
+    root.querySelector('#kpi-replenish').textContent=number(count('需补货'));
+    root.querySelector('#kpi-air').textContent=number(sum('air'));
+    root.querySelector('#kpi-rail').textContent=number(sum('rail'));
+    root.querySelector('#kpi-sea').textContent=number(sum('sea'));
+    root.querySelector('#kpi-clearance').textContent=number(count('清货'));
+    root.querySelector('#kpi-accelerate').textContent=number(count('加快动销'));
+    root.querySelector('#kpi-none').textContent=number(count('无补货需求'));
+    root.querySelector('#modules').innerHTML=moduleNames.map(action=>moduleHtml(action,data)).join('');
+  }
+  const csvEscape=value=>{
+    let s=String(value??'');
+    if(/^[=+\-@]/.test(s))s="'"+s;
+    return /[",\r\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;
+  };
+  function exportCsv(action){
+    const data=sorted(action,visible());
+    const lines=[detailColumns.map(csvEscape).join(',')];
+    for(const r of data)lines.push(fields.map((key,i)=>csvEscape(cellValue(r,i))).join(','));
+    const blob=new Blob(['\ufeff'+lines.join('\r\n')],{type:'text/csv;charset=utf-8'});
+    const url=URL.createObjectURL(blob),link=document.createElement('a');
+    link.href=url;link.download=`跨境吴老师_FBA备货_${payload.period}_${action}商品_当前筛选明细.csv`;
+    document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }
+  renderFilters();render();
+  root.addEventListener('input',event=>{
+    const key=event.target.dataset.optionSearch;
+    if(!key)return;
+    searches[key]=event.target.value;
+    root.querySelector(`#filter-options-${key}`).innerHTML=optionHtml(key);
+  });
+  root.addEventListener('click',event=>{
+    const trigger=event.target.closest('[data-filter-trigger]');
+    if(trigger){const key=trigger.dataset.filterTrigger;openFilter(openKey===key?null:key);return;}
+    const option=event.target.closest('[data-filter-option]');
+    if(option){
+      const key=option.dataset.filterOption;
+      state[key]=option.dataset.value;
+      searches[key]='';
+      renderFilters();render();root.querySelector(`#filter-trigger-${key}`).focus();return;
+    }
+    if(openKey&&!event.target.closest('.filter'))openFilter(null);
+    const download=event.target.closest('[data-export]');
+    if(download){exportCsv(download.dataset.export);return;}
+    const count=event.target.closest('[data-toggle-module]');
+    if(count){
+      const action=count.dataset.toggleModule;
+      expanded[action]=!expanded[action];
+      root.querySelector(`#module-body-${moduleIds[action]}`).hidden=!expanded[action];
+      root.querySelectorAll('[data-toggle-module]').forEach(button=>{
+        if(button.dataset.toggleModule===action){button.setAttribute('aria-expanded',String(expanded[action]));button.setAttribute('aria-label',`${expanded[action]?'收起':'展开'}${action}明细`);}
+      });
+      return;
+    }
+    if(event.target.id==='reset-filters'){
+      for(const [key] of filterDefs){state[key]='';searches[key]='';}
+      renderFilters();render();
+    }
+  });
+  root.addEventListener('keydown',event=>{
+    if(event.key==='Escape'&&openKey){const key=openKey;openFilter(null);root.querySelector(`#filter-trigger-${key}`).focus();event.preventDefault();return;}
+    const key=event.target.dataset.optionSearch;
+    if(key&&event.key==='ArrowDown'){
+      const first=root.querySelector(`#filter-options-${key} [data-filter-option]`);
+      if(first){first.focus();event.preventDefault();}return;
+    }
+    if(key&&event.key==='Enter'&&searches[key]){
+      const first=root.querySelector(`#filter-options-${key} [data-filter-option][data-value]:not([data-value=""])`);
+      if(first){first.click();event.preventDefault();}return;
+    }
+    const option=event.target.closest('[data-filter-option]');
+    if(option&&(event.key==='ArrowDown'||event.key==='ArrowUp')){
+      const items=[...option.parentElement.querySelectorAll('[data-filter-option]')];
+      const next=items[items.indexOf(option)+(event.key==='ArrowDown'?1:-1)];
+      if(next){next.focus();event.preventDefault();}
+    }
+  });
+  document.addEventListener('click',event=>{if(openKey&&!root.contains(event.target))openFilter(null);});
+})();
+</script>
+</body>
+</html>

@@ -4,6 +4,8 @@
 
 仓库：[kuajing-wulaoshi-amazon-fba-replenishment-skill](https://github.com/defway888-design/kuajing-wulaoshi-amazon-fba-replenishment-skill)。当前为公开仓库，安装时无需提交 GitHub 用户名或接受私有仓库邀请。
 
+当前发布版本：Skill v1.6.0／看板 V8。看板母版和固定渲染入口均随仓库提供；正式看板只注入本次通过校验的数据。
+
 ## 适用场景
 
 - 本周在上传的空白 XLSX 或在线表格中创建、更新运营参数表，供运营填写。
@@ -45,7 +47,7 @@
 ## 执行结果与失败边界
 
 - 第一阶段只更新本周参数表：在线路径返回链接，上传路径返回写入后的 XLSX；不自动执行第二阶段。
-- 第二阶段重新拉取 Listing、FBA 库存及 30／14／7 天销量，通过参数和数据校验后交付一个可下载的单文件离线 HTML 看板；四个动作明细与 CSV 均在 MSKU 和 ASIN 之间显示当前 Listing 的品名，筛选区也提供品名可搜索下拉框。上传路径还交付写回快照和运行记录后的同一工作簿 XLSX。核心数据缺失、匹配不确定或模板校验失败时停止。
+- 第二阶段重新拉取 Listing、FBA 库存及 30／14／7 天销量，通过参数和数据校验后交付一个可下载的单文件离线 HTML 看板；四个动作明细与 CSV 均在 MSKU 和 ASIN 之间显示本次 `erp_listing.local_name` 对应的本地商品名称，筛选区也提供品名可搜索下拉框。上传路径还交付写回快照和运行记录后的同一工作簿 XLSX。核心数据缺失、匹配不确定或模板校验失败时停止。
 - FBA 库存查询结果中的原始“可用总库存”可能包含 FBM 可售数量。正式补货计算会在本次逐店铺复算并确认口径后剔除已计入的 FBM 数量，再处理在途防重；无法确认时停止，不把 FBM 库存当作 FBA 备货库存。
 - 首次空白 XLSX／在线表格会先写入四表，再回读校验保护和样式；空白输入没有现成模板是正常状态。重新上传本 Skill 已生成的工作簿或复用已绑定在线表格时，先校验既有模板再更新。若实际环境无法实现或验证强制保护，仍会停止并说明具体原因。
 
@@ -58,13 +60,23 @@
 ## 仓库文件
 
 - [`SKILL.md`](SKILL.md)：Skill 入口、两阶段路由与跨境吴老师品牌执行提示。
-- [`references/fba-two-stage-rules.md`](references/fba-two-stage-rules.md)：完整固定业务规则、两种输入载体共用的四表契约、计算口径与 HTML V7 看板要求。
+- [`references/fba-two-stage-rules.md`](references/fba-two-stage-rules.md)：完整固定业务规则、两种输入载体共用的四表契约、计算口径与 V8 看板要求。
+- [`assets/dashboard_template.html`](assets/dashboard_template.html)：V8 固定 HTML／CSS／JS 页面母版，不含模拟或真实商品数据。
+- [`scripts/render_dashboard.mjs`](scripts/render_dashboard.mjs)：校验母版指纹和预计算明细后，生成单文件离线 HTML 的固定入口；需 Node.js 20+。
+- [`tests/render_dashboard.test.mjs`](tests/render_dashboard.test.mjs)：本地渲染、数据阻断和脚本注入安全测试。
 - [`agents/openai.yaml`](agents/openai.yaml)：Codex 显示名称与默认启动提示。
 - [`template_manifest.json`](template_manifest.json)：品牌、所有权和模板版本标识。
 
 ## 版本更新记录
 
-以下记录的是 **Skill 发布版本**；在线表格模板和看板模板各自的版本见 [`template_manifest.json`](template_manifest.json)，不要与 Skill 版本混用。日期均为北京时间。今后每次发布新版本，在本节顶部新增版本、日期和实际变动，并注明是否改变业务规则；不补编首次公开发布之前未经核实的历史版本。
+以下记录的是 **Skill 已发布版本**；在线表格模板和看板模板各自的版本见 [`template_manifest.json`](template_manifest.json)，不要与 Skill 版本混用。日期均为北京时间。今后每次发布新版本，在本节顶部新增版本、日期和实际变动，并注明是否改变业务规则；不补编首次公开发布之前未经核实的历史版本。
+
+### v1.6.0｜2026-11-18
+
+- 将已确认的紫粉色模拟看板封装为包内 V8 固定 HTML／CSS／JS 母版；新增 Node.js 20+ 固定渲染入口、SHA-256 指纹和合成数据测试，正式看板不得由执行 Agent 临时重绘。
+- 四个动作明细及对应 CSV 的“品名”固定取本次 `erp_listing.local_name`（本地商品名称）；加权平均日销量、加权月销量和可计算的库存可支持月数显示两位小数；新品状态与最终动作分别固定为中文三值／四值，普通商品备注留空，仅特殊情况使用固定短句。
+- 四个模块的表头与每个数据单元格内容上下居中，保留正常横排和长品名／备注换行；修正空模块提示在可视区域的显示。母版保留八项内嵌搜索筛选、四模块数量展开／收起、45 列与前七列冻结和 UTF-8 BOM CSV。
+- 影响范围：第二阶段 HTML／CSV 的展示契约与渲染方式；补货、清货、加快动销的计算阈值和第一阶段四表字段不变。
 
 ### v1.5.0｜2026-11-18
 
