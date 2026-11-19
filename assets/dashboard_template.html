@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <meta name="description" content="跨境吴老师亚马逊 FBA 备货单文件离线 BI 看板。">
-<title>跨境吴老师 亚马逊 FBA 备货 BI 看板</title>
+<title>亚马逊FBA备货BI看板</title>
 <style>
 :root{--page:#3a147b;--panel:#9f78bf;--pink:#df5d9c;--text:#ffffff;--ink:#1a1230;--blue:#1595f9;--yellow:#f4fb20;--orange:#ff7a1a;--purple:#7a00a8;--gray:#766985;--line:rgba(255,255,255,.24)}
 *{box-sizing:border-box}
@@ -17,8 +17,10 @@ body{font-family:"Microsoft YaHei","PingFang SC",Arial,sans-serif;color:var(--te
 .tile,.panel{min-width:0;border:1.5px solid #13071e;border-radius:13px;box-shadow:0 2px 0 rgba(0,0,0,.22);overflow:hidden}
 .tile{min-height:104px;background:linear-gradient(145deg,rgba(183,126,193,.96),rgba(224,91,157,.94))}
 .title-tile{display:flex;align-items:center;padding:14px 24px;background:linear-gradient(145deg,#5a247c,#782d8e)}
-h1{margin:0;color:#fff;font-size:28px;line-height:1.2;font-weight:800;overflow-wrap:anywhere}
-.sub,.source-line{margin-top:7px;color:#fff;font-size:12px;font-weight:700;line-height:1.45;overflow-wrap:anywhere}
+.title-tile>div{width:100%}
+h1{margin:7px 0 0;color:#fff;font-size:28px;line-height:1.2;font-weight:800;text-align:center;overflow-wrap:anywhere}
+.brand-logo-slot{height:100px;width:100%;display:flex;align-items:center;justify-content:center}
+.brand-logo{display:block;width:auto;height:100px;max-width:100%;object-fit:contain;object-position:center;filter:drop-shadow(0 0 1px rgba(255,255,255,.8))}
 .kpi{display:grid;place-content:center;min-width:0;text-align:center;padding:10px;position:relative}
 .kpi::after{content:"";position:absolute;left:0;right:0;bottom:0;height:5px;background:var(--accent)}
 .kpi .v{font-size:clamp(20px,2.2vw,28px);font-weight:900;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
@@ -59,7 +61,11 @@ button,input{font:inherit}
 .module-title{display:flex;align-items:center;flex-wrap:wrap;min-width:0;gap:9px;font-size:19px;font-weight:900;overflow-wrap:anywhere}
 .module-title::before{content:"";width:10px;height:28px;border-radius:5px;background:var(--module-accent)}
 .module-count{display:inline-grid;place-items:center;min-width:29px;height:24px;border:0;border-radius:999px;background:rgba(30,10,42,.25);color:inherit;font-size:12px;padding:0 8px;cursor:pointer}
-.summary-actions{display:flex;align-items:center;gap:10px}
+.summary-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.view-btn{border:1px solid rgba(255,255,255,.75);border-radius:7px;background:rgba(60,22,104,.75);color:#fff;padding:7px 11px;font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap}
+.view-btn:hover,.view-btn:focus-visible{background:#7130a1;outline:2px solid #fff;outline-offset:2px}
+.view-btn[aria-pressed="true"]{background:#44206f;border-color:#ffe789;color:#ffe789}
+.view-btn:disabled{opacity:.45;cursor:not-allowed}
 .module-body{padding:0 14px 14px}
 .module-body[hidden]{display:none}
 .table-wrap{max-width:100%;max-height:430px;overflow:auto;scrollbar-color:#ebc8f3 #4a246a;border:1px solid rgba(0,0,0,.35);border-radius:8px}
@@ -89,12 +95,11 @@ tbody tr:hover{background:rgba(255,255,255,.10)}
 </style>
 </head>
 <body>
-<main id="fba-dashboard" class="dash" data-template-version="FBA-BI-PURPLE-PINK-V9">
+<main id="fba-dashboard" class="dash" data-template-version="FBA-BI-PURPLE-PINK-V15">
   <section class="top" aria-label="标题和主要补货指标">
     <div class="tile title-tile"><div>
-      <h1>跨境吴老师 亚马逊 FBA 备货 BI 看板</h1>
-      <div class="sub">__FBA_SUB__</div>
-      <div class="source-line">__FBA_SOURCE__</div>
+      <div class="brand-logo-slot"><img class="brand-logo" src="__FBA_LOGO_DATA_URI__" width="1999" height="787" alt="跨境吴老师品牌 Logo"></div>
+      <h1>亚马逊FBA备货BI看板</h1>
     </div></div>
     <div class="tile kpi replenish"><button type="button" class="v kpi-count-button" id="kpi-replenish" data-toggle-module="需补货" aria-controls="module-body-replenish" aria-expanded="true">0</button><div class="l">需补货商品数</div></div>
     <div class="tile kpi air"><div class="v" id="kpi-air">0</div><div class="l">空运建议补货总量</div></div>
@@ -165,6 +170,27 @@ tbody tr:hover{background:rgba(255,255,255,.10)}
   const state=Object.fromEntries(filterDefs.map(([key])=>[key,'']));
   const searches=Object.fromEntries(filterDefs.map(([key])=>[key,'']));
   const expanded=Object.fromEntries([...moduleNames,'待核实'].map(action=>[action,true]));
+  const identityColumns=detailColumns.slice(0,7);
+  // 只根据本期完整的正式商品集合判定可选列，筛选不改变列契约。
+  const compactColumnsByAction=Object.freeze(Object.fromEntries(moduleNames.map(action=>{
+    const moduleRows=rows.filter(r=>r.action===action);
+    return [action,[
+      ...identityColumns,'可用总库存','FBA 可售库存','加权月销量',
+      ...(moduleRows.some(r=>r.air>0)?['空运建议补货量']:[]),
+      ...(moduleRows.some(r=>r.rail>0)?['铁路建议补货量']:[]),
+      '海运建议补货量','库存可支持月数','新品状态','最终动作','备注'
+    ]];
+  })));
+  const compactIndicesByAction=Object.fromEntries(moduleNames.map(action=>[
+    action,compactColumnsByAction[action].map(label=>detailColumns.indexOf(label))
+  ]));
+  for(const action of moduleNames){
+    const indices=compactIndicesByAction[action];
+    if(indices.some(i=>i<0)||new Set(indices).size!==indices.length||
+       indices.slice(0,7).some((i,n)=>i!==n)||indices.length<15||indices.length>17)
+      throw Error(`${action}常用列契约不完整`);
+  }
+  const fullView=Object.fromEntries(moduleNames.map(action=>[action,false]));
   let openKey=null;
   const escapeHtml=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
   const number=v=>Number(v).toLocaleString('zh-CN');
@@ -232,11 +258,15 @@ tbody tr:hover{background:rgba(255,255,255,.10)}
     const list=sorted(action,data),id=moduleIds[action];
     const cls={'需补货':'module-replenish pink','清货':'module-clearance','加快动销':'module-accelerate pink','无补货需求':'module-none'}[action];
     const icon=action==='清货'?priority('重点提醒'):action==='加快动销'?priority('次重点提醒'):'';
-    const cols=detailWidthsPx.map(w=>`<col style="width:${w}px">`).join('');
-    const head=detailColumns.map((label,i)=>`<th class="${isNumeric(i)?'num':''}${frozenClass(i)}"${frozenStyle(i)} title="${escapeHtml(label)}">${escapeHtml(label)}</th>`).join('');
-    const body=list.map(r=>`<tr>${fields.map((key,i)=>`<td class="${isNumeric(i)?'num':''}${frozenClass(i)}"${frozenStyle(i)}>${cellHtml(r,i)}</td>`).join('')}</tr>`).join('');
+    const indices=fullView[action]?fields.map((_,i)=>i):compactIndicesByAction[action];
+    const widths=indices.map(i=>!fullView[action]&&i===44?280:detailWidthsPx[i]);
+    const tableWidth=widths.reduce((a,b)=>a+b,0);
+    const cols=widths.map(w=>`<col style="width:${w}px">`).join('');
+    const head=indices.map(i=>`<th class="${isNumeric(i)?'num':''}${frozenClass(i)}"${frozenStyle(i)} title="${escapeHtml(detailColumns[i])}">${escapeHtml(detailColumns[i])}</th>`).join('');
+    const body=list.map(r=>`<tr>${indices.map(i=>`<td class="${isNumeric(i)?'num':''}${frozenClass(i)}"${frozenStyle(i)}>${cellHtml(r,i)}</td>`).join('')}</tr>`).join('');
     const empty=list.length?'':'<div class="empty-state">当前筛选条件下无商品</div>';
-    return `<section class="panel module ${cls}" data-module="${action}"><div class="module-head"><div class="module-title">${action}${icon}<button type="button" class="module-count" data-toggle-module="${action}" aria-controls="module-body-${id}" aria-expanded="${expanded[action]}" aria-label="${expanded[action]?'收起':'展开'}${action}明细">${list.length}</button></div><span class="summary-actions"><button type="button" class="csv-btn" data-export="${action}">下载当前明细 CSV</button></span></div><div class="module-body" id="module-body-${id}"${expanded[action]?'':' hidden'}><div class="table-wrap" role="region" tabindex="0" aria-label="${action}商品明细，可横向滚动查看全部字段；宽屏时左侧七列固定"><table style="width:6378px"><colgroup>${cols}</colgroup><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>${empty}</div></div></section>`;
+    const viewLabel=fullView[action]?'返回常用列':'查看完整 45 列';
+    return `<section class="panel module ${cls}" data-module="${action}"><div class="module-head"><div class="module-title">${action}${icon}<button type="button" class="module-count" data-toggle-module="${action}" aria-controls="module-body-${id}" aria-expanded="${expanded[action]}" aria-label="${expanded[action]?'收起':'展开'}${action}明细">${list.length}</button></div><span class="summary-actions"><button type="button" class="view-btn" data-view-toggle="${action}" aria-pressed="${fullView[action]}" aria-controls="table-${id}"${expanded[action]?'':' disabled'}>${viewLabel}</button><button type="button" class="csv-btn" data-export="${action}">下载当前明细 CSV</button></span></div><div class="module-body" id="module-body-${id}"${expanded[action]?'':' hidden'}><div class="table-wrap" role="region" tabindex="0" aria-label="${action}商品明细，${fullView[action]?'完整字段':'常用字段'}；宽屏时左侧七列固定"><table id="table-${id}" style="width:${tableWidth}px"><colgroup>${cols}</colgroup><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>${empty}</div></div></section>`;
   }
   const sortedExceptions=()=>visibleExceptions().slice().sort((a,b)=>compareText(a.parent,b.parent)||tie(a,b));
   const exceptionValues=r=>[
@@ -309,11 +339,21 @@ tbody tr:hover{background:rgba(255,255,255,.10)}
     if(openKey&&!event.target.closest('.filter'))openFilter(null);
     const download=event.target.closest('[data-export]');
     if(download){exportCsv(download.dataset.export);return;}
+    const viewToggle=event.target.closest('[data-view-toggle]');
+    if(viewToggle){
+      const action=viewToggle.dataset.viewToggle;
+      fullView[action]=!fullView[action];
+      render();
+      root.querySelector(`[data-view-toggle="${action}"]`).focus();
+      return;
+    }
     const count=event.target.closest('[data-toggle-module]');
     if(count){
       const action=count.dataset.toggleModule;
       expanded[action]=!expanded[action];
       root.querySelector(`#module-body-${moduleIds[action]}`).hidden=!expanded[action];
+      const viewButton=root.querySelector(`[data-view-toggle="${action}"]`);
+      if(viewButton)viewButton.disabled=!expanded[action];
       root.querySelectorAll('[data-toggle-module]').forEach(button=>{
         if(button.dataset.toggleModule===action){button.setAttribute('aria-expanded',String(expanded[action]));button.setAttribute('aria-label',`${expanded[action]?'收起':'展开'}${action}明细`);}
       });

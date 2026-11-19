@@ -4,7 +4,7 @@
 
 仓库：[kuajing-wulaoshi-amazon-fba-replenishment-skill](https://github.com/defway888-design/kuajing-wulaoshi-amazon-fba-replenishment-skill)。当前为公开仓库，安装时无需提交 GitHub 用户名或接受私有仓库邀请。
 
-当前发布版本：Skill v1.7.0／看板 V9。看板母版和固定渲染入口均随仓库提供；正式看板只注入本次通过校验的数据。
+当前版本：Skill v1.8.0／看板 V15。看板母版和固定渲染入口随 Skill 包提供；正式看板只注入本次通过校验的数据。
 
 ## 适用场景
 
@@ -60,8 +60,10 @@
 ## 仓库文件
 
 - [`SKILL.md`](SKILL.md)：Skill 入口、两阶段路由与跨境吴老师品牌执行提示。
-- [`references/fba-two-stage-rules.md`](references/fba-two-stage-rules.md)：完整固定业务规则、两种输入载体共用的四表契约、计算口径与本地 V9 看板要求。
-- [`assets/dashboard_template.html`](assets/dashboard_template.html)：本地 V9 固定 HTML／CSS／JS 页面母版，不含模拟或真实商品数据。
+- [`references/fba-two-stage-rules.md`](references/fba-two-stage-rules.md)：完整固定业务规则、两种输入载体共用的四表契约、计算口径与本地 V15 看板要求。
+- [`assets/dashboard_template.html`](assets/dashboard_template.html)：本地 V15 固定 HTML／CSS／JS 页面母版，不含模拟或真实商品数据。
+- [`assets/logo-transparent.png`](assets/logo-transparent.png)：由用户指定的 `logo.jpg` 去白底得到的透明背景 Logo；生成 HTML 时校验 PNG 指纹并离线内嵌，不产生远程图片依赖。
+- [`assets/logo.jpg`](assets/logo.jpg)：用户指定的原始 Logo 来源文件；正式看板不直接引用。
 - [`scripts/render_dashboard.mjs`](scripts/render_dashboard.mjs)：校验母版指纹和预计算明细后，生成单文件离线 HTML 的固定入口；需 Node.js 20+。
 - [`tests/render_dashboard.test.mjs`](tests/render_dashboard.test.mjs)：本地渲染、数据阻断和脚本注入安全测试。
 - [`agents/openai.yaml`](agents/openai.yaml)：Codex 显示名称与默认启动提示。
@@ -70,6 +72,12 @@
 ## 版本更新记录
 
 以下记录的是 **Skill 已发布版本**；在线表格模板和看板模板各自的版本见 [`template_manifest.json`](template_manifest.json)，不要与 Skill 版本混用。日期均为北京时间。今后每次发布新版本，在本节顶部新增版本、日期和实际变动，并注明是否改变业务规则；不补编首次公开发布之前未经核实的历史版本。
+
+### v1.8.0｜2026-11-19
+
+- 看板四个动作模块默认显示固定常用列；空运／铁路建议补货列仅在对应模块本期存在最终正数建议量时显示。可切换查看完整 45 列，CSV 始终导出完整 45 列，筛选不改变模块列集合。
+- 标题卡移除生成时间、周期、商品数及来源文字；透明背景品牌 Logo 居中在上、白色标题`亚马逊FBA备货BI看板`居中在下。Logo 离线内嵌，浅色轮廓减为单层 1px；卡片与明细表格尺寸不变。
+- 看板母版升级至 V15，随包新增透明 Logo，并同步更新既有固定渲染入口与校验测试；影响范围为第二阶段 HTML／CSV 展示。第一阶段四表结构、业务计算口径和异常隔离规则不变。
 
 ### v1.7.0｜2026-11-18
 

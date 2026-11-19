@@ -7,8 +7,10 @@ import { createHash } from 'node:crypto';
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const templatePath = join(packageRoot, 'assets', 'dashboard_template.html');
-const TEMPLATE_SHA256 = '8f421c10599aa124004faa38ab25e338b02cf25bf8c3b3dcd8c330466e915703';
-const VERSION = 'FBA-BI-PURPLE-PINK-V9';
+const logoPath = join(packageRoot, 'assets', 'logo-transparent.png');
+const TEMPLATE_SHA256 = '0dea451e20bca5292d613696dab9609a28965f851079abba28c33c853ca677b9';
+const LOGO_SHA256 = '23c0f7459a35bbd43374d3192885ed9daa2e50f6a050c8108f54ebae01d1a05a';
+const VERSION = 'FBA-BI-PURPLE-PINK-V15';
 const actions = new Set(['清货', '加快动销', '需补货', '无补货需求']);
 const exceptionCategories = new Set(['销量核对异常', '商品参数异常', '库存异常', '映射异常', '商品基础数据异常']);
 const statuses = new Set(['新品', '非新品', '未知']);
@@ -36,9 +38,6 @@ const inputKeys = new Set([...fields.filter(k => k !== 'includedLabel' && k !== 
 function fail(message) { throw new Error(`看板渲染输入无效：${message}`); }
 function int(value, field, row) {
   if (!Number.isSafeInteger(value) || value < 0) fail(`第 ${row} 行 ${field} 必须是非负整数`);
-}
-function htmlEscape(value) {
-  return String(value).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 }
 function replaceExactlyOnce(source, marker, value) {
   if (source.split(marker).length !== 2) throw new Error(`母版插槽数量异常：${marker}`);
@@ -143,17 +142,12 @@ function validate(input) {
   if (new Set(identities).size !== identities.length) fail('参与计算与待核实商品的身份重复');
   return { ...input, rows, exceptions };
 }
-function render(payload, template) {
-  const subtitle = `生成时间：${payload.generatedAt}（北京时间）｜周期：${payload.period}（${payload.periodStart} 至 ${payload.periodEnd}）｜参与计算商品：${payload.totalProducts} 个`;
-  const source = payload.sourceMode === 'online'
-    ? '数据来源：LingXing MCP + 运营在线参数表｜在线文件：跨境吴老师版亚马逊FBA备货管理表'
-    : '数据来源：LingXing MCP + 运营上传参数表｜工作簿：跨境吴老师版亚马逊FBA备货管理表.xlsx';
-  let html = replaceExactlyOnce(template, '__FBA_SUB__', htmlEscape(subtitle));
-  html = replaceExactlyOnce(html, '__FBA_SOURCE__', htmlEscape(source));
+function render(payload, template, logo) {
+  let html = replaceExactlyOnce(template, '__FBA_LOGO_DATA_URI__', `data:image/png;base64,${logo.toString('base64')}`);
   const publicRows = payload.rows.map(({ includedStages, nonFbaExcludedQty, fbmExcludedQty, rawAir, rawRail, rawSea, ...row }) => row);
   const json = JSON.stringify({ ...payload, rows: publicRows }).replace(/[<>&\u2028\u2029]/g, ch => `\\u${ch.charCodeAt(0).toString(16).padStart(4,'0')}`);
   html = replaceExactlyOnce(html, '__FBA_PAYLOAD_JSON__', json);
-  if (/__FBA_(?:SUB|SOURCE|PAYLOAD_JSON)__/.test(html)) throw new Error('母版插槽未完全填充');
+  if (/__FBA_(?:LOGO_DATA_URI|PAYLOAD_JSON)__/.test(html)) throw new Error('母版插槽未完全填充');
   return html;
 }
 
@@ -168,8 +162,13 @@ function main(args) {
   const template = readFileSync(templatePath, 'utf8');
   const actualHash = createHash('sha256').update(template, 'utf8').digest('hex');
   if (actualHash !== TEMPLATE_SHA256) throw new Error('母版 SHA-256 校验失败，停止渲染');
+  if (!existsSync(logoPath)) throw new Error('品牌 Logo 缺失，停止渲染');
+  const logo = readFileSync(logoPath);
+  if (createHash('sha256').update(logo).digest('hex') !== LOGO_SHA256 ||
+      !logo.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10])) || logo[25] !== 6)
+    throw new Error('品牌 Logo 完整性校验失败，停止渲染');
   const payload = validate(JSON.parse(readFileSync(inputPath, 'utf8')));
-  const html = render(payload, template);
+  const html = render(payload, template, logo);
   writeFileSync(outputPath, html, 'utf8');
   process.stdout.write(`跨境吴老师备货 BI 看板已生成：${outputPath}\n`);
 }

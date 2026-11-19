@@ -5,7 +5,8 @@ import { tmpdir } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { Script } from 'node:vm';
+import { Script, runInNewContext } from 'node:vm';
+import { createHash } from 'node:crypto';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const renderer = join(root, 'scripts', 'render_dashboard.mjs');
@@ -22,7 +23,7 @@ function makeRow(overrides = {}) {
   };
 }
 function makePayload(rows, exceptions = []) {
-  return { templateVersion:'FBA-BI-PURPLE-PINK-V9',generatedAt:'2026-11-18 12:00',period:'2026-W47',
+  return { templateVersion:'FBA-BI-PURPLE-PINK-V15',generatedAt:'2026-11-18 12:00',period:'2026-W47',
     periodStart:'2026-11-16',periodEnd:'2026-11-22',sourceMode:'upload',
     listingTotal:rows.length+exceptions.length,totalProducts:rows.length,rows,exceptions };
 }
@@ -49,7 +50,22 @@ test('packages one offline HTML with vertical centering, fixed labels and no moc
   assert.equal(result.status, 0, result.stderr);
   assert.ok(html);
   assert.match(html, /thead th,tbody td\{vertical-align:middle\}/);
-  assert.match(html, /data-template-version="FBA-BI-PURPLE-PINK-V9"/);
+  assert.match(html, /data-template-version="FBA-BI-PURPLE-PINK-V15"/);
+  assert.match(html, /<title>亚马逊FBA备货BI看板<\/title>/);
+  assert.match(html, /<h1>亚马逊FBA备货BI看板<\/h1>/);
+  assert.ok(html.indexOf('class="brand-logo-slot"') < html.indexOf('<h1>亚马逊FBA备货BI看板</h1>'));
+  assert.match(html, /h1\{[^}]*text-align:center/);
+  assert.match(html, /\.title-tile>div\{width:100%\}/);
+  assert.match(html, /\.brand-logo-slot\{[^}]*justify-content:center\}/);
+  assert.match(html, /class="brand-logo" src="data:image\/png;base64,[A-Za-z0-9+/=]+"/);
+  const embeddedLogo = html.match(/class="brand-logo" src="data:image\/png;base64,([A-Za-z0-9+/=]+)"/)?.[1];
+  assert.ok(embeddedLogo);
+  assert.equal(createHash('sha256').update(Buffer.from(embeddedLogo,'base64')).digest('hex'),
+    createHash('sha256').update(readFileSync(join(root,'assets','logo-transparent.png'))).digest('hex'));
+  assert.equal(Buffer.from(embeddedLogo,'base64')[25], 6);
+  assert.doesNotMatch(html, /生成时间：|数据来源：|在线文件：|工作簿：|__FBA_SUB__|__FBA_SOURCE__|https:\/\/amc\.wulaoshi\.info\/logo\.jpg/);
+  assert.match(html, /\.top\{display:grid;grid-template-columns:minmax\(0,1\.7fr\) repeat\(4,minmax\(0,1fr\)\);gap:10px\}/);
+  assert.match(html, /\.table-wrap\{max-width:100%;max-height:430px/);
   assert.match(html, /当前筛选条件下无商品/);
   assert.match(html, /跨境吴老师_FBA备货_\$\{payload.period\}_\$\{action\}商品_当前筛选明细\.csv/);
   assert.match(html, /可用总库存含FBM可售2件，已从补货扣减库存中剔除/);
@@ -63,6 +79,43 @@ test('packages one offline HTML with vertical centering, fixed labels and no moc
   const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
   assert.ok(script);
   assert.doesNotThrow(() => new Script(script));
+});
+
+test('compact columns use each module full-period final quantity, not raw or filtered quantity', () => {
+  const template = readFileSync(join(root, 'assets', 'dashboard_template.html'), 'utf8');
+  const start = template.indexOf('  const identityColumns=detailColumns.slice(0,7);');
+  const end = template.indexOf('  let openKey=null;', start);
+  assert.ok(start > 0 && end > start);
+  const snippet = template.slice(start,end);
+  const detailColumns = [
+    '运营负责人','站点','店铺名称','父商品','MSKU','品名','ASIN','可用总库存',
+    'FBA 可售库存','加权月销量','空运建议补货量','铁路建议补货量',
+    '海运建议补货量','库存可支持月数','新品状态','最终动作','备注'
+  ];
+  const moduleNames = ['需补货','清货','加快动销','无补货需求'];
+  const rows = [
+    {action:'需补货',air:3,rail:0,rawRail:8},
+    {action:'需补货',air:0,rail:0,rawAir:5},
+    {action:'清货',air:0,rail:0,rawAir:9,rawRail:7},
+    {action:'加快动销',air:0,rail:2},
+    {action:'无补货需求',air:0,rail:0}
+  ];
+  const result = runInNewContext(snippet+'\n({compactColumnsByAction,compactIndicesByAction,fullView})',
+    {detailColumns,moduleNames,rows});
+  const plain = action => Array.from(result.compactColumnsByAction[action]);
+  assert.equal(plain('需补货').length,16);
+  assert.ok(plain('需补货').includes('空运建议补货量'));
+  assert.ok(!plain('需补货').includes('铁路建议补货量'));
+  assert.ok(!plain('清货').includes('空运建议补货量'));
+  assert.ok(!plain('清货').includes('铁路建议补货量'));
+  assert.ok(!plain('加快动销').includes('空运建议补货量'));
+  assert.ok(plain('加快动销').includes('铁路建议补货量'));
+  assert.equal(plain('无补货需求').length,15);
+  assert.deepEqual(plain('清货').slice(0,7),detailColumns.slice(0,7));
+  assert.ok(moduleNames.every(action=>result.fullView[action]===false));
+  assert.match(template, /moduleRows=rows\.filter\(r=>r\.action===action\)/);
+  assert.match(template, /const indices=fullView\[action\]\?fields\.map\(\(_,i\)=>i\):compactIndicesByAction\[action\]/);
+  assert.match(template, /const lines=\[detailColumns\.map\(csvEscape\)\.join\(','\)\]/);
 });
 
 test('blocks inconsistent actions and does not create HTML', () => {
@@ -89,13 +142,25 @@ test('isolates one unexplained MSKU sales discrepancy without hiding healthy pro
     ]};
   const {result,html} = run(makePayload([makeRow()], [exception]));
   assert.equal(result.status, 0, result.stderr);
-  assert.match(html, /参与计算商品：1 个/);
+  assert.doesNotMatch(html, /参与计算商品：1 个/);
+  assert.match(html, /"totalProducts":1/);
   assert.match(html, /待核实商品（未参与计算）/);
   assert.match(html, /SKU-002/);
   assert.match(html, /Listing参考销量37件，产品表现销量36件/);
   assert.match(html, /Listing参考销量13件，产品表现销量12件/);
   assert.match(html, /待核实（未计算）/);
   assert.doesNotMatch(html, /"msku":"SKU-002"[^\n]*"action":"无补货需求"/);
+});
+
+test('online workbook mode also keeps title metadata out of the offline page', () => {
+  const payload = makePayload([makeRow()]);
+  payload.sourceMode = 'online';
+  const {result,html} = run(payload);
+  assert.equal(result.status,0,result.stderr);
+  assert.ok(html);
+  assert.doesNotMatch(html, /生成时间：|数据来源：|在线文件：|工作簿：/);
+  assert.match(html, /<h1>亚马逊FBA备货BI看板<\/h1>/);
+  assert.match(html, /src="data:image\/png;base64,/);
 });
 
 test('blocks all-exception and duplicate-identity dashboards', () => {
